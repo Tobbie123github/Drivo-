@@ -1,0 +1,307 @@
+package handler
+
+import (
+	"drivo/internal/middleware"
+	"drivo/internal/models"
+	"drivo/internal/service"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+)
+
+type DriverHandler struct {
+	svc *service.DriverService
+}
+
+func NewDriverHandler(svc *service.DriverService) *DriverHandler {
+	return &DriverHandler{
+		svc: svc,
+	}
+}
+
+func (h *DriverHandler) PreRegisterDriver(c *gin.Context) {
+
+	var input models.DriverRegisterInput
+
+	if err := c.ShouldBind(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	if err := h.svc.PreRegister(c.Request.Context(), input); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Please verify your account",
+	})
+
+}
+
+func (h *DriverHandler) RegisterDriver(c *gin.Context) {
+
+	var input models.DriverVerifyEmail
+
+	if err := c.ShouldBind(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	u, err := h.svc.VerifyUserEmail(c.Request.Context(), input.OTP, input.Email)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Registration Successful, Proceed to login",
+		"data":    u,
+	})
+
+}
+
+func (h *DriverHandler) LoginDriver(c *gin.Context) {
+
+	var input models.DriverLoginInput
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	res, err := h.svc.Login(input.Password, input.Email)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": res,
+	})
+
+}
+
+func (h *DriverHandler) UpdateDriverProfile(c *gin.Context) {
+
+	userID, ok := middleware.GetUserId(c)
+
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Error grtting user id",
+		})
+
+		return
+	}
+
+	userId, _ := uuid.Parse(userID)
+
+	var input models.DriverProfileInput
+
+	if err := c.ShouldBind(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	if err := h.svc.CompleteProfile(c.Request.Context(), userId, input); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Profile updated",
+	})
+
+}
+
+func (h *DriverHandler) UpdateDriverLicense(c *gin.Context) {
+
+	userID, ok := middleware.GetUserId(c)
+
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Error grtting user id",
+		})
+
+		return
+	}
+
+	userId, _ := uuid.Parse(userID)
+
+	var input models.DriverLicence
+
+	if err := c.ShouldBind(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	if err := h.svc.UpdateLicence(c.Request.Context(), userId, input); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "License updated",
+	})
+
+}
+
+func (h *DriverHandler) InsertVehicle(c *gin.Context) {
+
+	userID, ok := middleware.GetUserId(c)
+
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "UnAuthorized User",
+		})
+		return
+	}
+
+	var input models.VehicleInput
+
+	if err := c.ShouldBind(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	userId, _ := uuid.Parse(userID)
+
+	if err := h.svc.Vehicle(c.Request.Context(), userId, input); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Vehicle added",
+	})
+}
+
+func (h *DriverHandler) DriverProofUpload(c *gin.Context) {
+	userID, ok := middleware.GetUserId(c)
+
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "UnAuthorized User",
+		})
+		return
+	}
+
+	var input models.DocumentUploadInput
+
+	if err := c.ShouldBind(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	userId, _ := uuid.Parse(userID)
+
+	if err := h.svc.ProofofProfile(c.Request.Context(), userId, input); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Documents uploaded, pending verification",
+	})
+
+}
+
+func (h *DriverHandler) AgreeTerms(c *gin.Context) {
+	userID, ok := middleware.GetUserId(c)
+
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "UnAuthorized User",
+		})
+		return
+	}
+
+	var input struct {
+		AgreeTerms bool `json:"agree_terms"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	if input.AgreeTerms != true {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "You must agree to the terms and conditions",
+		})
+		return
+	}
+
+	userId, _ := uuid.Parse(userID)
+
+	if err := h.svc.AgreeTerms(userId); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Onboarding Complete, pending account verification",
+	})
+
+}
+
+func (h *DriverHandler) GetDriver(c *gin.Context) {
+	userID, ok := middleware.GetUserId(c)
+
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "UnAuthorized User",
+		})
+		return
+	}
+
+	userId, _ := uuid.Parse(userID)
+
+	driver, err := h.svc.GetDriverProfile(userId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"driver": driver,
+	})
+
+}
