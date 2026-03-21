@@ -26,11 +26,7 @@ type Config struct {
 
 func Load() (Config, error) {
 
-	err := godotenv.Load()
-
-	if err != nil {
-		return Config{}, err
-	}
+	godotenv.Load()
 
 	port, err := extractText("PORT")
 
