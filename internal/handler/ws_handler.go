@@ -105,7 +105,7 @@ func (h *WSHandler) RiderConnect(c *gin.Context) {
 
 // riderWritePump sends messages from server > rider
 func (h *WSHandler) riderWritePump(client *ws.RiderClient, conn *websocket.Conn) {
-	ticker := time.NewTicker((60 * time.Second * 9) / 10)
+	ticker := time.NewTicker((90 * time.Second * 9) / 10)
 	defer func() {
 		ticker.Stop()
 		conn.Close()
@@ -137,8 +137,8 @@ func (h *WSHandler) riderReadPump(client *ws.RiderClient, conn *websocket.Conn) 
 		conn.Close()
 	}()
 
-	conn.SetReadLimit(512)
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetReadLimit(10240)
+	conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
@@ -164,6 +164,8 @@ func (h *WSHandler) handleMessage(driverID uuid.UUID, msg ws.Message) {
 		h.handleStartTrip(driverID, msg.Payload)
 	case ws.MessageTypeEndTrip:
 		h.handleEndTrip(driverID, msg.Payload)
+	case "ping":
+		
 	default:
 		log.Printf("unknown message type from driver %s: %s", driverID, msg.Type)
 	}
@@ -181,9 +183,14 @@ func (h *WSHandler) handleLocationUpdate(driverID uuid.UUID, payload interface{}
 		return
 	}
 
-	if err := h.driverSvc.UpdateLocation(context.Background(), driverID, loc.Latitude, loc.Longitude); err != nil {
+	ctx := context.Background()
+
+	if err := h.driverSvc.UpdateLocation(ctx, driverID, loc.Latitude, loc.Longitude); err != nil {
 		log.Printf("failed to save location for driver %s: %v", driverID, err)
 	}
+
+	
+	h.rideSvc.PushLocationToRider(ctx, driverID, loc.Latitude, loc.Longitude)
 }
 
 func (h *WSHandler) handleRideResponse(driverUserID uuid.UUID, payload interface{}) {

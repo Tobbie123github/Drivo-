@@ -66,6 +66,16 @@ func calculateFare(distanceKm float64) float64 {
 	return math.Round(fare/50) * 50
 }
 
+func (s *RideService) notifyRider(riderID uuid.UUID, msg ws.Message) {
+	bytes, _ := json.Marshal(msg)
+	s.riderHub.SendToRider(riderID, bytes)
+
+}
+func (s *RideService) notifyDriver(driverID uuid.UUID, msg ws.Message) {
+	bytes, _ := json.Marshal(msg)
+	s.hub.SendToDriver(driverID, bytes)
+}
+
 func (s *RideService) RequestRide(ctx context.Context, riderID uuid.UUID, input models.RideRequestInput) (models.Ride, error) {
 
 	distanceKm := HaversineDistance(
@@ -115,6 +125,139 @@ func (s *RideService) RequestRide(ctx context.Context, riderID uuid.UUID, input 
 	return createdRide, nil
 }
 
+func (s *RideService) CancelRide(ctx context.Context, riderUserID uuid.UUID, rideID uuid.UUID) error {
+
+	ride, err := s.rideRepo.GetRideByID(ctx, rideID)
+
+	if err != nil {
+		return fmt.Errorf("ride not found: %v", err)
+	}
+
+	// confirm the rider is the owner of the ride
+
+	if riderUserID != ride.RiderID {
+		return errors.New("youre not the owner of the ride")
+	}
+
+	// cancel only pending or accepted ride
+
+	if ride.Status != models.RideStatusAccepted && ride.Status != models.RideStatusPending {
+		return fmt.Errorf("cannot cancel a ride with status: %s", ride.Status)
+	}
+
+	if err := s.rideRepo.UpdateRideStatus(ctx, rideID, models.RideStatusCancelled, nil); err != nil {
+		return err
+	}
+
+	// Scenero 1, cancel while pending
+
+	if ride.Status == models.RideStatusPending {
+		// remove candidates from redis
+		_ = s.rideRepo.DeleteRideCandidates(ctx, rideID)
+
+		// notify rider
+		s.notifyRider(ride.RiderID, ws.Message{
+			Type: ws.MessageTypeRideCancelledByRider,
+			Payload: map[string]string{
+				"ride_id": rideID.String(),
+				"message": "Your ride has been cancelled",
+			},
+		})
+
+		fmt.Printf("Ride %s cancelled by rider while pending\n", rideID)
+		return nil
+
+	}
+
+	// scenero 2 - cancelled after driver accepted
+
+	if ride.Status == models.RideStatusAccepted && ride.DriverID != nil {
+
+		driver, err := s.driverRepo.GetDriverByID(*ride.DriverID)
+		if err == nil {
+			// notify driver
+			s.notifyDriver(driver.UserID, ws.Message{
+				Type: ws.MessageTypeRideCancelledByRider,
+				Payload: map[string]string{
+					"ride_id": rideID.String(),
+					"message": "Rider cancelled the ride",
+				},
+			})
+		}
+		s.notifyRider(ride.RiderID, ws.Message{
+			Type: ws.MessageTypeRideCancelledByRider,
+			Payload: map[string]string{
+				"ride_id": rideID.String(),
+				"message": "Your ride has been cancelled",
+			},
+		})
+
+		fmt.Printf("Ride %s cancelled by rider after acceptance\n", rideID)
+	}
+
+	return nil
+
+}
+
+func (s *RideService) DriverCancelRide(ctx context.Context, driverUserID uuid.UUID, rideID uuid.UUID) error {
+	ride, err := s.rideRepo.GetRideByID(ctx, rideID)
+	if err != nil {
+		return fmt.Errorf("ride not found: %v", err)
+	}
+
+	// Confirm this driver owns the ride
+	driver, err := s.driverRepo.GetDriverByUserID(driverUserID)
+	if err != nil {
+		return fmt.Errorf("driver not found: %v", err)
+	}
+
+	if ride.DriverID == nil || *ride.DriverID != driver.ID {
+		return errors.New("you are not the driver on this ride")
+	}
+
+	// Can only cancel accepted rides
+	if ride.Status != models.RideStatusAccepted {
+		return fmt.Errorf("cannot cancel a ride with status: %s", ride.Status)
+	}
+
+	// update status back to pending
+	if err := s.rideRepo.UpdateRideStatus(ctx, rideID, models.RideStatusPending, nil); err != nil {
+		return err
+	}
+
+	// Update driver cancellation rate
+	if err := s.driverRepo.IncrementCancellationRate(ctx, driver.ID); err != nil {
+		fmt.Printf("failed to update cancellation rate: %v\n", err)
+	}
+
+	// Notify rider
+	s.notifyRider(ride.RiderID, ws.Message{
+		Type: ws.MessageTypeRideCancelledByDriver,
+		Payload: map[string]string{
+			"ride_id": rideID.String(),
+			"message": "Your driver cancelled. Finding you a new driver...",
+		},
+	})
+
+	// Try next candidate
+	err = s.notifyNextDriver(ctx, ride)
+	if err != nil {
+		// No more candidates — cancel the ride fully
+		s.rideRepo.UpdateRideStatus(ctx, rideID, models.RideStatusCancelled, nil)
+		s.notifyRider(ride.RiderID, ws.Message{
+			Type: ws.MessageTypeRideCancelledByDriver,
+			Payload: map[string]string{
+				"ride_id": rideID.String(),
+				"message": "Sorry, no drivers are available right now. Please try again.",
+			},
+		})
+	}
+
+	fmt.Printf("Ride %s cancelled by driver %s\n", rideID, driverUserID)
+	return nil
+
+}
+
 func (s *RideService) findNearestDrivers(ctx context.Context, pickupLat, pickupLng float64, limit int) ([]uuid.UUID, error) {
 
 	onlineUserIDs := s.hub.GetOnlineDriverIDs()
@@ -146,10 +289,17 @@ func (s *RideService) findNearestDrivers(ctx context.Context, pickupLat, pickupL
 			continue
 		}
 
+		_, err = s.rideRepo.GetOngoingRide(ctx, driver.ID)
+		if err == nil {
+
+			fmt.Printf("Skipping driver %s — already on a ride\n", driver.ID)
+			continue
+		}
+
 		distance := HaversineDistance(pickupLat, pickupLng, loc.Latitude, loc.Longitude)
 		fmt.Printf("Driver %s is %.2fkm away\n", driver.ID, distance)
 
-		if distance <= 10000.0 {
+		if distance <= 10.0 {
 			candidates = append(candidates, driverDistance{
 				driverID: driver.ID,
 				distance: distance,
@@ -181,14 +331,50 @@ func (s *RideService) findNearestDrivers(ctx context.Context, pickupLat, pickupL
 func (s *RideService) notifyNextDriver(ctx context.Context, ride models.Ride) error {
 	driverID, err := s.rideRepo.GetNextCandidate(ctx, ride.ID)
 	if err != nil {
-		s.rideRepo.UpdateRideStatus(ctx, ride.ID, models.RideStatusCancelled, nil)
+
+		// fecch current ride
+
+		currentRide, fetchErr := s.rideRepo.GetRideByID(ctx, ride.ID)
+
+		if fetchErr != nil {
+			return fetchErr
+		}
+
+		// cancel ride only if the current ride is pending
+
+		if currentRide.Status == models.RideStatusPending {
+			s.notifyRider(currentRide.RiderID, ws.Message{
+				Type: ws.MessageTypeNoCandidates,
+				Payload: map[string]string{
+					"ride_id": ride.ID.String(),
+					"message": "No drivers available right now. Please try again.",
+				},
+			})
+			s.rideRepo.UpdateRideStatus(ctx, ride.ID, models.RideStatusCancelled, nil)
+		}
+
 		return errors.New("no drivers accepted the ride")
 	}
 
-	// ← use GetDriverByID not GetDriver
+	ride, err = s.rideRepo.GetRideByID(ctx, ride.ID)
+
+	if err != nil {
+		return fmt.Errorf("notifyNextDriver: ride %s not found", ride.ID)
+
+	}
+	if ride.Status != models.RideStatusPending {
+		return fmt.Errorf("notifyNextDriver: ride %s is no longer pending (%s), stopping", ride.ID, ride.Status)
+	}
+
 	driver, err := s.driverRepo.GetDriverByID(driverID)
 	if err != nil {
 		fmt.Printf("Could not find driver %s: %v — trying next\n", driverID, err)
+		return s.notifyNextDriver(ctx, ride)
+	}
+
+	_, err = s.rideRepo.GetOngoingRide(ctx, driver.ID)
+	if err == nil {
+		fmt.Printf("Driver %s is on another ride — skipping\n", driver.ID)
 		return s.notifyNextDriver(ctx, ride)
 	}
 
@@ -237,7 +423,7 @@ func (s *RideService) notifyNextDriver(ctx context.Context, ride models.Ride) er
 }
 
 func (s *RideService) startDriverTimeout(driverID uuid.UUID, ride models.Ride) {
-	time.Sleep(15 * time.Minute)
+	time.Sleep(20 * time.Second)
 
 	ctx := context.Background()
 
@@ -503,7 +689,6 @@ func (s *RideService) EndTrip(ctx context.Context, driverUserID uuid.UUID, rideI
 	completedBytes, _ := json.Marshal(completedMsg)
 	s.riderHub.SendToRider(ride.RiderID, completedBytes)
 
-	
 	ratingPrompt := ws.Message{
 		Type: ws.MessageTypeRateDriver,
 		Payload: map[string]string{
@@ -552,4 +737,41 @@ func (s *RideService) EndTrip(ctx context.Context, driverUserID uuid.UUID, rideI
 func (s *RideService) updateDriverNoOFTrips(ctx context.Context, driverID uuid.UUID) error {
 
 	return s.driverRepo.IncreaseDriverTrips(ctx, driverID)
+}
+
+func (s *RideService) GetRiderHistory(ctx context.Context, riderID uuid.UUID) ([]models.Ride, error) {
+
+	return s.rideRepo.RiderHistory(ctx, riderID)
+}
+func (s *RideService) GetDriverHistory(ctx context.Context, driverUserID uuid.UUID) ([]models.Ride, error) {
+
+	driver, err := s.driverRepo.GetDriverByUserID(driverUserID)
+	if err != nil {
+		return nil, fmt.Errorf("driver not found: %v", err)
+	}
+
+	return s.rideRepo.DriverHistory(ctx, driver.ID)
+}
+
+func (s *RideService) PushLocationToRider(ctx context.Context, driverUserID uuid.UUID, lat, lng float64) {
+	driver, err := s.driverRepo.GetDriverByUserID(driverUserID)
+	if err != nil {
+		return
+	}
+
+	ride, err := s.rideRepo.GetOngoingRide(ctx, driver.ID)
+	if err != nil {
+		return
+	}
+
+	msg := ws.Message{
+		Type: ws.MessageTypeDriverLocation,
+		Payload: map[string]float64{
+			"latitude":  lat,
+			"longitude": lng,
+		},
+	}
+
+	bytes, _ := json.Marshal(msg)
+	s.riderHub.SendToRider(ride.RiderID, bytes)
 }

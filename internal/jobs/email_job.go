@@ -1,4 +1,3 @@
-
 package jobs
 
 type EmailType string
@@ -9,6 +8,7 @@ const (
 	EmailTypeDriverWelcome    EmailType = "driver_welcome"
 	EmailTypeRideConfirmation EmailType = "ride_confirmation"
 	EmailTypeRideCompleted    EmailType = "ride_completed"
+	EmailTypeDriverApproved   EmailType = "driver_approved"
 )
 
 type EmailJob struct {
@@ -49,4 +49,5 @@ type Mailer interface {
 	SendDriverWelcomeEmail(to, name string) error
 	SendRideConfirmationEmail(to string, data RideConfirmationData) error
 	SendRideCompletedEmail(to string, data RideCompletedData) error
+	SendDriverApprovedEmail(to string, text string) error
 }

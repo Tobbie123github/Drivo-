@@ -292,7 +292,7 @@ func (h *DriverHandler) GetDriver(c *gin.Context) {
 
 	userId, _ := uuid.Parse(userID)
 
-	driver, err := h.svc.GetDriverProfile(userId)
+	driver, err := h.svc.GetDriverProfile(c.Request.Context(), userId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),

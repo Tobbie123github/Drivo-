@@ -16,8 +16,16 @@ const (
 	MessageTypeRideCompleted MessageType = "ride_completed"
 	MessageTypeDriverIsHere  MessageType = "driver_is_here"
 
-    MessageTypeRateDriver  MessageType = "rate_driver"  
-    MessageTypeRateRider   MessageType = "rate_rider"
+	MessageTypeNoCandidates MessageType = "no_candidates"
+
+	MessageTypeRideCancelledByRider  MessageType = "ride_cancelled_by_rider"
+	MessageTypeRideCancelledByDriver MessageType = "ride_cancelled_by_driver"
+	MessageTypeDriverCancel          MessageType = "driver_cancel"
+
+	MessageTypeRateDriver MessageType = "rate_driver"
+	MessageTypeRateRider  MessageType = "rate_rider"
+
+	MessageTypeDriverLocation MessageType = "driver_location"
 
 	MessageTypeError MessageType = "error"
 )

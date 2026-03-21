@@ -5,10 +5,12 @@ import (
 	"drivo/internal/app"
 	"drivo/internal/models"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type RideRepo struct {
@@ -21,14 +23,12 @@ func NewRideRepo(db *app.App) *RideRepo {
 	}
 }
 
-
 func (r *RideRepo) CreateRide(ctx context.Context, ride models.Ride) (models.Ride, error) {
 	if err := r.db.DB.WithContext(ctx).Create(&ride).Error; err != nil {
 		return models.Ride{}, fmt.Errorf("failed to create ride: %v", err)
 	}
 	return ride, nil
 }
-
 
 func (r *RideRepo) GetRideByID(ctx context.Context, rideID uuid.UUID) (models.Ride, error) {
 	var ride models.Ride
@@ -82,7 +82,6 @@ func (r *RideRepo) SaveRideCandidates(ctx context.Context, rideID uuid.UUID, dri
 	return r.db.Redis.Set(ctx, key, bytes, 2*time.Minute).Err()
 }
 
-
 func (r *RideRepo) GetNextCandidate(ctx context.Context, rideID uuid.UUID) (uuid.UUID, error) {
 	key := fmt.Sprintf("ride:candidates:%s", rideID.String())
 
@@ -100,17 +99,14 @@ func (r *RideRepo) GetNextCandidate(ctx context.Context, rideID uuid.UUID) (uuid
 		return uuid.Nil, fmt.Errorf("no more candidates available")
 	}
 
-
 	nextDriver := candidates[0]
 
-	
 	candidates = candidates[1:]
 	updated, _ := json.Marshal(candidates)
 	r.db.Redis.Set(ctx, key, updated, 2*time.Minute)
 
 	return uuid.MustParse(nextDriver), nil
 }
-
 
 func (r *RideRepo) DeleteRideCandidates(ctx context.Context, rideID uuid.UUID) error {
 	key := fmt.Sprintf("ride:candidates:%s", rideID.String())
@@ -119,11 +115,17 @@ func (r *RideRepo) DeleteRideCandidates(ctx context.Context, rideID uuid.UUID) e
 
 func (r *RideRepo) GetOngoingRide(ctx context.Context, driverID uuid.UUID) (models.Ride, error) {
 	var ride models.Ride
-	if err := r.db.DB.WithContext(ctx).
+	err := r.db.DB.WithContext(ctx).
 		Where("driver_id = ? AND status IN ?", driverID, []string{"accepted", "ongoing"}).
-		First(&ride).Error; err != nil {
-		return models.Ride{}, fmt.Errorf("no active ride found: %v", err)
+		First(&ride).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Ride{}, err
+		}
+		return models.Ride{}, fmt.Errorf("failed to get ongoing ride: %v", err)
 	}
+
 	return ride, nil
 }
 
@@ -148,4 +150,35 @@ func (r *RideRepo) CompleteRide(ctx context.Context, rideID uuid.UUID, actualFar
 	}
 
 	return nil
+}
+
+func (r *RideRepo) RiderHistory(ctx context.Context, riderID uuid.UUID) ([]models.Ride, error) {
+
+	var rides []models.Ride
+	err := r.db.DB.WithContext(ctx).
+		Where("rider_id = ?", riderID).
+		Order("created_at DESC").
+		Find(&rides).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch rider history: %v", err)
+	}
+
+	return rides, nil
+}
+
+func (r *RideRepo) DriverHistory(ctx context.Context, driverID uuid.UUID) ([]models.Ride, error) {
+
+	var rides []models.Ride
+
+	err := r.db.DB.WithContext(ctx).
+		Where("driver_id = ?", driverID).
+		Order("created_at DESC").
+		Find(&rides).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch driver history: %v", err)
+	}
+
+	return rides, nil
 }

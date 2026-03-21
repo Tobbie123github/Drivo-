@@ -50,9 +50,9 @@ func (svc *DriverService) PreRegister(ctx context.Context, input models.DriverRe
 
 	// validate inputs
 	email := strings.TrimSpace(strings.ToLower(input.Email))
-	password := strings.TrimSpace(strings.ToLower(input.Password))
-	phone := strings.TrimSpace(strings.ToLower(input.Phone))
-	name := strings.TrimSpace(strings.ToLower(input.Name))
+	password := strings.TrimSpace(input.Password)
+	phone := strings.TrimSpace(input.Phone)
+	name := strings.TrimSpace(input.Name)
 
 	if email == "" || password == "" || name == "" || phone == "" {
 		return errors.New("Name, Email, Phone and password must not be empty")
@@ -64,6 +64,11 @@ func (svc *DriverService) PreRegister(ctx context.Context, input models.DriverRe
 
 	// check if user already exists
 	if err := svc.repo.FindEmail(email); err != nil {
+		return err
+	}
+
+	// check if user already exists with phone
+	if err := svc.repo.FindPhone(phone); err != nil {
 		return err
 	}
 
@@ -140,7 +145,7 @@ func (svc *DriverService) VerifyUserEmail(ctx context.Context, inputOTP string, 
 		Email:        &user.Email,
 		PasswordHash: user.HashPassword,
 		Role:         models.RoleDriver,
-		IsVerified:   false,
+		IsVerified:   true,
 		IsActive:     true,
 		CreatedAt:    time.Now().UTC(),
 		UpdatedAt:    time.Now().UTC(),
@@ -347,7 +352,7 @@ func (svc *DriverService) Vehicle(ctx context.Context, userId uuid.UUID, input m
 	category := strings.TrimSpace(input.Category)
 	seats := input.Seats
 
-	driver, err := svc.repo.GetDriver(userId)
+	driver, err := svc.repo.GetDriver(ctx, userId)
 	if err != nil {
 		return err
 	}
@@ -517,16 +522,16 @@ func (svc *DriverService) AgreeTerms(userId uuid.UUID) error {
 		AgreeTerms:            true,
 		OnboardingStep:        6,
 		IsOnboardingCompleted: true,
-		Status:                "pending",
+		Status:                models.DriverPending,
 	}
 
 	return svc.repo.UpdateDriver(driver, userId)
 
 }
 
-func (svc *DriverService) GetDriverProfile(userId uuid.UUID) (models.Driver, error) {
+func (svc *DriverService) GetDriverProfile(ctx context.Context, userId uuid.UUID) (models.Driver, error) {
 
-	driver, err := svc.repo.GetDriver(userId)
+	driver, err := svc.repo.GetDriver(ctx, userId)
 
 	if err != nil {
 		return models.Driver{}, err

@@ -25,7 +25,7 @@ type User struct {
 	PasswordHash string `gorm:"not null" json:"-"`
 	AvatarURL    *string
 	PublicID     *string  `json:"-"`
-	Role         UserRole `gorm:"type:user_role;not null" json:"-"`
+	Role         UserRole `gorm:"type:user_role;not null"`
 	IsVerified   bool     `gorm:"not null;default:false"`
 	IsActive     bool     `gorm:"not null;default:true"`
 	// ReferralCode string     `gorm:"uniqueIndex;not null"`

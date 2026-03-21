@@ -7,9 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//  /abc -> only admin can access,  1st level, if the user is authenticated, 2nd level if user is admin
-// /xyz ->  any auth user can access, if the user is authenticated
-// /bbc ->  anybody can access, no auth needed
 
 func RequireDriver() gin.HandlerFunc {
 	return func(c *gin.Context) {

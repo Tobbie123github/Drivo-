@@ -46,9 +46,9 @@ func (svc *UserService) PreRegister(ctx context.Context, input models.UserRegist
 
 	// validate inputs
 	email := strings.TrimSpace(strings.ToLower(input.Email))
-	password := strings.TrimSpace(strings.ToLower(input.Password))
-	phone := strings.TrimSpace(strings.ToLower(input.Phone))
-	name := strings.TrimSpace(strings.ToLower(input.Name))
+	password := strings.TrimSpace(input.Password)
+	phone := strings.TrimSpace(input.Phone)
+	name := strings.TrimSpace(input.Name)
 
 	if email == "" || password == "" || name == "" || phone == "" {
 		return errors.New("Name, Email, Phone and password must not be empty")
@@ -60,6 +60,11 @@ func (svc *UserService) PreRegister(ctx context.Context, input models.UserRegist
 
 	// check if user already exists
 	if err := svc.repo.FindEmail(email); err != nil {
+		return err
+	}
+	// check if phone already exists
+
+	if err := svc.repo.FindPhone(phone); err != nil {
 		return err
 	}
 

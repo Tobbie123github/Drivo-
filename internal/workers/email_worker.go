@@ -51,8 +51,10 @@ func dispatch(mailer jobs.Mailer, job jobs.EmailJob) error {
 		return mailer.SendDriverWelcomeEmail(job.To, job.Name)
 	case jobs.EmailTypeRideConfirmation:
 		return mailer.SendRideConfirmationEmail(job.To, job.RideConfirmationData)
-	case jobs.EmailTypeRideCompleted: 
+	case jobs.EmailTypeRideCompleted:
 		return mailer.SendRideCompletedEmail(job.To, job.RideCompletedData)
+	case jobs.EmailTypeDriverApproved:
+		return mailer.SendDriverApprovedEmail(job.To, job.Name)
 	default:
 		log.Printf("unknown email type: %s\n", job.Type)
 		return nil

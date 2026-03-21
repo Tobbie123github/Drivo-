@@ -52,7 +52,7 @@ func (r *UserRepo) Verify(ctx context.Context, key string) (models.PendingUser, 
 	defer cancel()
 
 	var user models.PendingUser
-	
+
 	data, err := r.db.Redis.Get(childCtx, key).Bytes()
 	if err != nil {
 		return user, err
@@ -104,6 +104,23 @@ func (r *UserRepo) FindEmail(email string) error {
 	return nil
 }
 
+func (r *UserRepo) FindPhone(phone string) error {
+
+	var count int64
+
+	result := r.db.DB.Model(&models.User{}).Where("phone = ?", phone).Count(&count)
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if count > 0 {
+		return errors.New("User already exist with this phone, please use another one")
+	}
+
+	return nil
+}
+
 func (r *UserRepo) FindUserEmail(email string) (models.User, error) {
 
 	var user models.User
@@ -117,4 +134,3 @@ func (r *UserRepo) FindUserEmail(email string) (models.User, error) {
 
 	return user, nil
 }
-

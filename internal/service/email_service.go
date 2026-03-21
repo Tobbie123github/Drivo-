@@ -26,6 +26,7 @@ const (
 	EmailTypeWelcome          EmailType = "welcome"
 	EmailTypeRideConfirmation EmailType = "ride_confirmation"
 	EmailTypeRideCompleted    EmailType = "ride_completed"
+	EmailTypeDriverApproved   EmailType = "driver_approved"
 )
 
 type OTPEmailData struct {
@@ -39,7 +40,6 @@ type WelcomeEmailData struct {
 	Name string
 	Year int
 }
-
 
 func (s *MailService) SendOTPEmail(to, name, otp string) error {
 	data := OTPEmailData{
@@ -83,17 +83,17 @@ func (s *MailService) SendRideConfirmationEmail(to string, data jobs.RideConfirm
 }
 
 func (s *MailService) SendDriverWelcomeEmail(to, name string) error {
-    data := WelcomeEmailData{
-        Name: name,
-        Year: time.Now().Year(),
-    }
+	data := WelcomeEmailData{
+		Name: name,
+		Year: time.Now().Year(),
+	}
 
-    html, err := renderTemplate(driverWelcomeTemplate, data)
-    if err != nil {
-        return fmt.Errorf("failed to render driver welcome template: %v", err)
-    }
+	html, err := renderTemplate(driverWelcomeTemplate, data)
+	if err != nil {
+		return fmt.Errorf("failed to render driver welcome template: %v", err)
+	}
 
-    return s.send(to, "Welcome to Drivo — Let's Get You on the Road", html)
+	return s.send(to, "Welcome to Drivo — Let's Get You on the Road", html)
 }
 
 func (s *MailService) SendRideCompletedEmail(to string, data jobs.RideCompletedData) error {
@@ -105,6 +105,20 @@ func (s *MailService) SendRideCompletedEmail(to string, data jobs.RideCompletedD
 	}
 
 	return s.send(to, "Your Drivo Ride Receipt", html)
+}
+
+func (s *MailService) SendDriverApprovedEmail(to string, name string) error {
+	data := WelcomeEmailData{
+		Name: name,
+		Year: time.Now().Year(),
+	}
+
+	html, err := renderTemplate(driverApprovedTemplate, data)
+	if err != nil {
+		return fmt.Errorf("failed to render driver approved template: %v", err)
+	}
+
+	return s.send(to, "Your Drivo Driver Account is Approved 🎉", html)
 }
 
 func (s *MailService) send(to, subject, htmlBody string) error {
@@ -150,6 +164,134 @@ func renderTemplate(tmpl string, data interface{}) (string, error) {
 
 	return buf.String(), nil
 }
+
+const driverApprovedTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f4f5; }
+  .wrapper { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .header { background: #000; padding: 32px 40px; text-align: center; }
+  .header h1 { color: #fff; font-size: 28px; font-weight: 700; }
+  .header span { color: #facc15; }
+  .hero { background: #facc15; padding: 40px; text-align: center; }
+  .hero-icon { font-size: 56px; margin-bottom: 12px; }
+  .hero h2 { font-size: 26px; font-weight: 700; color: #000; margin-bottom: 8px; }
+  .hero p { font-size: 15px; color: #000; opacity: 0.7; }
+  .body { padding: 40px; }
+  p { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 16px; }
+  .checklist { margin: 24px 0; }
+  .check-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f3f4f6; }
+  .check-item:last-child { border-bottom: none; }
+  .check-icon { width: 24px; height: 24px; background: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #facc15; font-size: 13px; font-weight: 700; text-align: center; line-height: 24px; }
+  .check-text { font-size: 14px; color: #374151; font-weight: 500; }
+  .divider { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
+  .stats { display: flex; gap: 12px; margin: 24px 0; }
+  .stat { flex: 1; background: #f9fafb; border-radius: 10px; padding: 16px 12px; text-align: center; border: 1px solid #e5e7eb; }
+  .stat-value { font-size: 20px; font-weight: 700; color: #000; }
+  .stat-label { font-size: 11px; color: #6b7280; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .cta-box { background: #000; border-radius: 12px; padding: 28px; text-align: center; margin: 28px 0; }
+  .cta-box p { color: #9ca3af; font-size: 14px; margin-bottom: 16px; }
+  .cta-box h3 { color: #fff; font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  .tip { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 20px; margin: 20px 0; }
+  .tip p { font-size: 14px; color: #92400e; margin: 0; }
+  .footer { background: #f9fafb; padding: 24px 40px; text-align: center; border-top: 1px solid #e5e7eb; }
+  .footer p { color: #9ca3af; font-size: 13px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <div class="header">
+    <h1>Driv<span>o</span></h1>
+  </div>
+
+  <div class="hero">
+    <div class="hero-icon">🎉</div>
+    <h2>You're Approved!</h2>
+    <p>Your driver account is fully verified and ready to go</p>
+  </div>
+
+  <div class="body">
+
+    <p>Hi <strong>{{.Name}}</strong>,</p>
+    <p>Great news — our team has reviewed your documents and your Drivo driver account has been fully approved. You can now go online and start accepting rides.</p>
+
+    <div class="checklist">
+      <div class="check-item">
+        <div class="check-icon">✓</div>
+        <div class="check-text">Identity verified</div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon">✓</div>
+        <div class="check-text">Driver's license verified</div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon">✓</div>
+        <div class="check-text">Vehicle verified</div>
+      </div>
+      <div class="check-item">
+        <div class="check-icon">✓</div>
+        <div class="check-text">Account activated</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value">₦0</div>
+        <div class="stat-label">Earnings</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">5.0 ⭐</div>
+        <div class="stat-label">Rating</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">0</div>
+        <div class="stat-label">Trips</div>
+      </div>
+    </div>
+
+    <div class="cta-box">
+      <h3>Ready to start earning?</h3>
+      <p>Open the Drivo app, go online, and your first ride request will come in shortly.</p>
+    </div>
+
+    <hr class="divider">
+
+    <p><strong>Quick reminders before your first trip:</strong></p>
+
+    <div class="tip">
+      <p>⏱ You have <strong>15 seconds</strong> to accept each ride request. Missing requests lowers your acceptance rate.</p>
+    </div>
+
+    <div class="tip">
+      <p>⭐ Drivers with a rating above <strong>4.8</strong> get priority in ride matching. Be punctual, polite, and keep your vehicle clean.</p>
+    </div>
+
+    <div class="tip">
+      <p>📍 Always make sure your location is enabled so riders can find you accurately.</p>
+    </div>
+
+    <hr class="divider">
+
+    <p>If you have any questions or need help getting started, our support team is available anytime.</p>
+    <p>Welcome to the road,<br><strong>The Drivo Team</strong></p>
+
+  </div>
+
+  <div class="footer">
+    <p>© {{.Year}} Drivo. All rights reserved.<br>
+    You received this email because your Drivo driver account was approved.</p>
+  </div>
+
+</div>
+</body>
+</html>
+`
 
 const baseLayout = `
 <!DOCTYPE html>
@@ -323,7 +465,7 @@ const rideConfirmationTemplate = `
   <div class="header"><h1>Driv<span>o</span></h1></div>
   <div class="body">
     <h2>Your ride is confirmed </h2>
-    <p>Hi {{.RiderName}}, your driver is on the way!</p>
+    <p>Hi {{.RiderName}}, driver accepted!</p>
 
     <div class="route">
       <div class="route-point">
@@ -491,8 +633,6 @@ const driverWelcomeTemplate = `
 </body>
 </html>
 `
-
-
 
 const rideCompletedTemplate = `
 <!DOCTYPE html>

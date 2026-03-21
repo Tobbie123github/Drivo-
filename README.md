@@ -628,3 +628,299 @@ Fares are calculated using the **Haversine formula** for straight-line distance 
 Final fare is rounded to the nearest ₦50.
 
 ---
+
+## Admin Endpoints
+
+> All admin routes require `Authorization: Bearer <token>` with role `admin`
+
+### Create Admin
+
+Manually update a user's role in the database:
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'admin@drivo.com';
+```
+
+Then login normally via `POST /auth/user/login`
+
+---
+
+### Dashboard Stats
+```
+GET /admin/stats
+```
+```json
+{
+  "stats": {
+    "total_drivers": 10,
+    "pending_drivers": 3,
+    "active_drivers": 6,
+    "suspended_drivers": 1,
+    "total_riders": 50,
+    "total_rides": 120,
+    "completed_rides": 100,
+    "cancelled_rides": 20,
+    "total_earnings": 250000.00,
+    "online_drivers": 4
+  }
+}
+```
+
+---
+
+### Drivers
+
+#### Get All Drivers
+```
+GET /admin/drivers
+GET /admin/drivers?status=pending
+```
+```json
+{
+  "drivers": [ ...driver objects ],
+  "total": 10
+}
+```
+
+#### Approve Driver
+```
+PUT /admin/drivers/:id/approve
+```
+```json
+{ "message": "Driver approved" }
+```
+
+#### Reject Driver
+```
+PUT /admin/drivers/:id/reject
+```
+```json
+{ "message": "Driver rejected" }
+```
+
+#### Suspend Driver
+```
+PUT /admin/drivers/:id/suspend
+```
+```json
+{ "message": "Driver suspended" }
+```
+
+#### Ban Driver
+```
+PUT /admin/drivers/:id/ban
+```
+```json
+{ "message": "Driver banned" }
+```
+
+#### Verify Driver Identity
+```
+PUT /admin/drivers/:id/verify-identity
+```
+```json
+{ "message": "Driver identity verified" }
+```
+
+#### Verify Driver Vehicle
+```
+PUT /admin/drivers/:id/verify-vehicle
+```
+```json
+{ "message": "Driver vehicle verified" }
+```
+
+#### Verify Driver License
+```
+PUT /admin/drivers/:id/verify-license
+```
+```json
+{ "message": "Driver license verified" }
+```
+
+---
+
+### Riders
+
+#### Get All Riders
+```
+GET /admin/riders
+```
+```json
+{
+  "riders": [ ...rider objects ],
+  "total": 50
+}
+```
+
+---
+
+### Rides
+
+#### Get All Rides
+```
+GET /admin/rides
+GET /admin/rides?status=completed
+```
+```json
+{
+  "rides": [ ...ride objects ],
+  "total": 120
+}
+```
+
+---
+
+## Cancellation
+
+### Rider Cancels
+```
+POST /ride/cancel
+Authorization: Bearer <rider_token>
+```
+```json
+{ "ride_id": "650ae3b7-..." }
+```
+```json
+{ "message": "Ride cancelled" }
+```
+
+Rider WebSocket receives:
+```json
+{
+  "type": "ride_cancelled_by_rider",
+  "payload": {
+    "ride_id": "650ae3b7-...",
+    "message": "Your ride has been cancelled"
+  }
+}
+```
+
+If driver had already accepted, driver WebSocket receives:
+```json
+{
+  "type": "ride_cancelled_by_rider",
+  "payload": {
+    "ride_id": "650ae3b7-...",
+    "message": "Rider cancelled the ride"
+  }
+}
+```
+
+---
+
+### Driver Cancels
+```
+POST /ride/driver/cancel
+Authorization: Bearer <driver_token>
+```
+```json
+{ "ride_id": "650ae3b7-..." }
+```
+```json
+{ "message": "Ride cancelled" }
+```
+
+Rider WebSocket receives:
+```json
+{
+  "type": "ride_cancelled_by_driver",
+  "payload": {
+    "ride_id": "650ae3b7-...",
+    "message": "Your driver cancelled. Finding you a new driver..."
+  }
+}
+```
+
+> If another candidate driver exists in Redis, they automatically receive the ride request. If no candidates remain, the ride is fully cancelled.
+
+---
+
+## Ride History
+
+### Rider History
+```
+GET /ride/history
+Authorization: Bearer <rider_token>
+```
+```json
+{
+  "rides": [ ...ride objects ],
+  "total": 12
+}
+```
+
+### Driver History
+```
+GET /ride/driver/history
+Authorization: Bearer <driver_token>
+```
+```json
+{
+  "rides": [ ...ride objects ],
+  "total": 45
+}
+```
+
+---
+
+## Rating
+
+### Rider Rates Driver
+Triggered automatically after trip ends — rider receives a `rate_driver` WebSocket prompt, then submits via HTTP:
+```
+POST /rating/driver
+Authorization: Bearer <rider_token>
+```
+```json
+{
+  "ride_id": "650ae3b7-...",
+  "score": 5,
+  "comment": "Very smooth ride!"
+}
+```
+```json
+{ "message": "Driver rated successfully" }
+```
+
+### Driver Rates Rider
+```
+POST /rating/rider
+Authorization: Bearer <driver_token>
+```
+```json
+{
+  "ride_id": "650ae3b7-...",
+  "score": 4,
+  "comment": "Good passenger"
+}
+```
+```json
+{ "message": "Rider rated successfully" }
+```
+
+---
+
+## Driver Status Flow
+
+A driver must pass through the following stages before going online:
+```
+Register → Verify Email → Complete Onboarding
+        │
+        ▼
+Admin reviews documents:
+  PUT /admin/drivers/:id/verify-license
+  PUT /admin/drivers/:id/verify-identity
+  PUT /admin/drivers/:id/verify-vehicle
+        │
+        ▼
+Admin approves:
+  PUT /admin/drivers/:id/approve  → status = active
+        │
+        ▼
+Driver can now go online and accept rides ✅
+```
+
+
+
+
+

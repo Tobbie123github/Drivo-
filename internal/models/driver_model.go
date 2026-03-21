@@ -58,7 +58,7 @@ type Driver struct {
 	OnboardingStep        int  `gorm:"not null;default:1"`
 	IsOnboardingCompleted bool `gorm:"not null;default:false"`
 
-	User     User `gorm:"foreignKey:UserID" json:"-"`
+	User     User `gorm:"foreignKey:UserID"`
 	Vehicles []Vehicle
 }
 

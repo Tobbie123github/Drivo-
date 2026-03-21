@@ -107,6 +107,23 @@ func (r *DriverRepo) FindEmail(email string) error {
 	return nil
 }
 
+func (r *DriverRepo) FindPhone(phone string) error {
+
+	var count int64
+
+	result := r.db.DB.Model(&models.User{}).Where("phone = ?", phone).Count(&count)
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if count > 0 {
+		return errors.New("User already exist with this phone, please use another one")
+	}
+
+	return nil
+}
+
 func (r *DriverRepo) FindUserEmail(email string) (models.User, error) {
 
 	var user models.User
@@ -169,10 +186,11 @@ func (r *DriverRepo) UpdateDriverLicense(driver models.Driver, userId uuid.UUID)
 
 }
 
-func (r *DriverRepo) GetDriver(userId uuid.UUID) (models.Driver, error) {
+func (r *DriverRepo) GetDriver(ctx context.Context, userId uuid.UUID) (models.Driver, error) {
 	var driver models.Driver
 
-	err := r.db.DB.
+	err := r.db.DB.WithContext(ctx).
+		Preload("Vehicles").
 		Where("user_id = ?", userId).
 		First(&driver).Error
 
@@ -275,4 +293,12 @@ func (r *DriverRepo) GetLocationFromRedis(ctx context.Context, driverID uuid.UUI
 func (r *DriverRepo) IncreaseDriverTrips(ctx context.Context, driverID uuid.UUID) error {
 
 	return r.db.DB.WithContext(ctx).Model(&models.Driver{}).Where("id = ?", driverID).Update("total_trips", gorm.Expr("total_trips + 1")).Error
+}
+
+func (r *DriverRepo) IncrementCancellationRate(ctx context.Context, driverID uuid.UUID) error {
+	return r.db.DB.WithContext(ctx).
+		Model(&models.Driver{}).
+		Where("id = ?", driverID).
+		UpdateColumn("cancellation_rate", gorm.Expr("cancellation_rate + 1")).
+		Error
 }

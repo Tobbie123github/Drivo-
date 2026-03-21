@@ -35,6 +35,7 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 			"Authorization",
 			"Content-Type",
 			"Upgrade",
+			"Keep-Alive",
 			"Connection",
 			"Sec-WebSocket-Key",
 			"Sec-WebSocket-Version",
@@ -60,17 +61,21 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 	ratingService := service.NewRatingService(ratingRepo, rideRepo, driverRepo)
 	ratingHandler := handler.NewRatingHandler(ratingService)
 
+	adminRepo := repository.NewAdminRepo(a)
+	adminService := service.NewAdminService(adminRepo, driverRepo)
+	adminHandler := handler.NewAdminHandler(adminService)
+
 	mailSvc := service.NewMailService(a)
 	workers.StartEmailWorkers(mailSvc)
 
 	wsHandler := handler.NewWSHandler(hub, riderHub, driverService, rideService)
 
-	// User
+	// User Auth
 	r.POST("/auth/user/register", userHandler.PreRegisterUser)
 	r.POST("/auth/user/verify", userHandler.RegisterUser)
 	r.POST("/auth/user/login", userHandler.LoginUser)
 
-	// Driver
+	// Driver Auth
 	r.POST("/auth/driver/register", driverHandler.PreRegisterDriver)
 	r.POST("/auth/driver/verify", driverHandler.RegisterDriver)
 	r.POST("/auth/driver/login", driverHandler.LoginDriver)
@@ -79,23 +84,54 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 
 	authenticated.Use(middleware.AuthRequired(cfg.JWTSecret))
 
-	authenticated.POST("/ride/request", rideHandler.RequestRide)
+	
+	rideGroup := authenticated.Group("/ride")
+	{
 
-	authenticated.GET("/ws/driver", wsHandler.DriverConnect)
+		rideGroup.POST("/request", rideHandler.RequestRide)
+		rideGroup.POST("/cancel", rideHandler.CancelRide)
+		rideGroup.GET("/history", rideHandler.GetRiderHistory)
+
+		rideGroup.POST("/driver/cancel", middleware.RequireOnboardingComplete(a.DB), middleware.RequireActiveDriver(a.DB), rideHandler.DriverCancelRide)
+		rideGroup.GET("/driver/history", middleware.RequireOnboardingComplete(a.DB), middleware.RequireActiveDriver(a.DB), rideHandler.GetDriverHistory)
+	}
+
+	authenticated.GET("/ws/driver",middleware.RequireOnboardingComplete(a.DB), middleware.RequireActiveDriver(a.DB), wsHandler.DriverConnect)
 	authenticated.GET("/ws/rider", wsHandler.RiderConnect)
 
 	authenticated.POST("/rating/driver", ratingHandler.RateDriver)
 
 	driver := authenticated.Group("/driver")
-
 	driver.Use(middleware.RequireDriver())
+	{
+		driver.PUT("/profile", driverHandler.UpdateDriverProfile)
+		driver.PUT("/license", driverHandler.UpdateDriverLicense)
+		driver.POST("/vehicle", driverHandler.InsertVehicle)
+		driver.POST("/documents", driverHandler.DriverProofUpload)
+		driver.POST("/onboarding/complete", driverHandler.AgreeTerms)
+		driver.GET("/profile", driverHandler.GetDriver)
+	}
 
-	driver.PUT("/profile", driverHandler.UpdateDriverProfile)
-	driver.PUT("/license", driverHandler.UpdateDriverLicense)
-	driver.POST("/vehicle", driverHandler.InsertVehicle)
-	driver.POST("/documents", driverHandler.DriverProofUpload)
-	driver.POST("/onboarding/complete", driverHandler.AgreeTerms)
-	driver.GET("/profile", driverHandler.GetDriver)
+	admin := authenticated.Group("/admin")
+	admin.Use(middleware.RequireAdmin())
+	{
+
+		admin.GET("/stats", adminHandler.GetDashboardStats)
+
+		admin.GET("/drivers", adminHandler.GetAllDrivers) // ?status=pending
+		admin.PUT("/drivers/:id/approve", adminHandler.ApproveDriver)
+		admin.PUT("/drivers/:id/reject", adminHandler.RejectDriver)
+		admin.PUT("/drivers/:id/suspend", adminHandler.SuspendDriver)
+		admin.PUT("/drivers/:id/ban", adminHandler.BanDriver)
+
+		admin.PUT("/drivers/:id/verify-identity", adminHandler.VerifyDriverIdentity)
+		admin.PUT("/drivers/:id/verify-vehicle", adminHandler.VerifyDriverVehicle)
+		admin.PUT("/drivers/:id/verify-license", adminHandler.VerifyDriverLicense)
+
+		admin.GET("/riders", adminHandler.GetAllRiders)
+
+		admin.GET("/rides", adminHandler.GetAllRides) // ?status=completed
+	}
 
 	return r
 }
