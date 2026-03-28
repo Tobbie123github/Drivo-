@@ -901,24 +901,14 @@ Authorization: Bearer <driver_token>
 ---
 
 ## Driver Status Flow
+```
 
-A driver must pass through the following stages before going online:
-```
-Register → Verify Email → Complete Onboarding
-        │
-        ▼
-Admin reviews documents:
-  PUT /admin/drivers/:id/verify-license
-  PUT /admin/drivers/:id/verify-identity
-  PUT /admin/drivers/:id/verify-vehicle
-        │
-        ▼
-Admin approves:
-  PUT /admin/drivers/:id/approve  → status = active
-        │
-        ▼
-Driver can now go online and accept rides ✅
-```
+
+
+Recurring ride 
+
+
+
 
 
 

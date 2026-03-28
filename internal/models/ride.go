@@ -14,6 +14,7 @@ const (
 	RideStatusOngoing   RideStatus = "ongoing"
 	RideStatusCompleted RideStatus = "completed"
 	RideStatusCancelled RideStatus = "cancelled"
+	RideStatusScheduled RideStatus = "scheduled"
 )
 
 type Ride struct {
@@ -39,15 +40,25 @@ type Ride struct {
 
 	Rider  User    `gorm:"foreignKey:RiderID" json:"-"`
 	Driver *Driver `gorm:"foreignKey:DriverID" json:"-"`
+
+	RideMode     string     `gorm:"type:varchar(20);default:'solo'" json:"ride_mode"`
+	PoolGroupID  *uuid.UUID `gorm:"type:uuid;index" json:"pool_group_id"`
+	PoolFarePaid float64    `json:"pool_fare_paid"`
+
+	ScheduledAt *time.Time `gorm:"index" json:"scheduled_at"`
+	IsScheduled bool       `gorm:"default:false" json:"is_scheduled"`
+
+	RecurringRideID *uuid.UUID `gorm:"type:uuid;index" json:"recurring_ride_id"`
 }
 
 type RideRequestInput struct {
-	PickupLat      float64 `json:"pickup_lat"  binding:"required"`
-	PickupLng      float64 `json:"pickup_lng"  binding:"required"`
-	DropoffLat     float64 `json:"dropoff_lat" binding:"required"`
-	DropoffLng     float64 `json:"dropoff_lng" binding:"required"`
-	PickupAddress  string  `json:"pickup_address"`
-	DropoffAddress string  `json:"dropoff_address"`
+	PickupLat      float64    `json:"pickup_lat"  binding:"required"`
+	PickupLng      float64    `json:"pickup_lng"  binding:"required"`
+	DropoffLat     float64    `json:"dropoff_lat" binding:"required"`
+	DropoffLng     float64    `json:"dropoff_lng" binding:"required"`
+	PickupAddress  string     `json:"pickup_address"`
+	DropoffAddress string     `json:"dropoff_address"`
+	ScheduledAt    *time.Time `json:"scheduled_at"`
 }
 
 type RideRequestNotification struct {

@@ -9,8 +9,12 @@ import (
 )
 
 type Config struct {
-	PORT    string
-	DB_HOST string
+	PORT             string
+	DB_HOST          string
+	DB_PASSWORD      string
+	DB_USER          string
+	DB_NAME          string
+	DB_PORT          string
 	JWTSecret        string
 	CLOUDINARY_URL   string
 	REDIS_URL        string
@@ -35,7 +39,31 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("cannot find host")
 	}
-	
+
+	db_user, err := extractText("DB_USER")
+
+	if err != nil {
+		return Config{}, fmt.Errorf("cannot find name")
+	}
+
+	db_port, err := extractText("DB_PORT")
+
+	if err != nil {
+		return Config{}, fmt.Errorf("cannot find PORT")
+	}
+
+	db_name, err := extractText("DB_NAME")
+
+	if err != nil {
+		return Config{}, fmt.Errorf("cannot find name")
+	}
+
+	db_pass, err := extractText("DB_PASSWORD")
+
+	if err != nil {
+		return Config{}, fmt.Errorf("cannot find pass")
+	}
+
 	jwtSecret, err := extractText("JWTSecret")
 
 	if err != nil {
@@ -79,8 +107,12 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		PORT:    port,
-		DB_HOST: db_host,
+		PORT:             port,
+		DB_HOST:          db_host,
+		DB_PASSWORD:      db_pass,
+		DB_USER:          db_user,
+		DB_NAME:          db_name,
+		DB_PORT:          db_port,
 		JWTSecret:        jwtSecret,
 		CLOUDINARY_URL:   cloudinary,
 		REDIS_URL:        redisURL,

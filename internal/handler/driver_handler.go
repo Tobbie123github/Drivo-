@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"context"
+	"drivo/internal/jobs"
 	"drivo/internal/middleware"
 	"drivo/internal/models"
 	"drivo/internal/service"
+	"drivo/internal/workers"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,12 +14,14 @@ import (
 )
 
 type DriverHandler struct {
-	svc *service.DriverService
+	svc     *service.DriverService
+	rideSvc *service.RideService
 }
 
-func NewDriverHandler(svc *service.DriverService) *DriverHandler {
+func NewDriverHandler(svc *service.DriverService, rideSvc *service.RideService) *DriverHandler {
 	return &DriverHandler{
-		svc: svc,
+		svc:     svc,
+		rideSvc: rideSvc,
 	}
 }
 
@@ -31,11 +36,18 @@ func (h *DriverHandler) PreRegisterDriver(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.PreRegister(c.Request.Context(), input); err != nil {
+	email, name, otp, err := h.svc.PreRegister(c.Request.Context(), input)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		return
+	}
+	workers.EmailQueue <- jobs.EmailJob{
+		Type: jobs.EmailTypeOTP,
+		To:   email,
+		Name: name,
+		OTP:  otp,
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -62,6 +74,12 @@ func (h *DriverHandler) RegisterDriver(c *gin.Context) {
 			"error": err.Error(),
 		})
 		return
+	}
+
+	workers.EmailQueue <- jobs.EmailJob{
+		Type: jobs.EmailTypeDriverWelcome,
+		To:   *u.Email,
+		Name: u.Name,
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -304,4 +322,29 @@ func (h *DriverHandler) GetDriver(c *gin.Context) {
 		"driver": driver,
 	})
 
+}
+
+func (h *DriverHandler) UpdateLocation(c *gin.Context) {
+	userID, _ := c.Get("userID")
+	uid, _ := userID.(string)
+	driverUserID, _ := uuid.Parse(uid)
+
+	var req struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+
+	ctx := context.Background()
+	if err := h.svc.UpdateLocation(ctx, driverUserID, req.Latitude, req.Longitude); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.rideSvc.PushLocationToRider(ctx, driverUserID, req.Latitude, req.Longitude)
+
+	c.JSON(http.StatusOK, gin.H{"message": "location updated"})
 }

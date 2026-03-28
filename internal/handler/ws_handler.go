@@ -7,6 +7,7 @@ import (
 	"drivo/internal/service"
 	"drivo/internal/ws"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -27,14 +28,18 @@ type WSHandler struct {
 	riderHub  *ws.RiderHub
 	driverSvc *service.DriverService
 	rideSvc   *service.RideService
+	poolSvc   *service.PoolService
+	chatSvc   *service.ChatService
 }
 
-func NewWSHandler(hub *ws.Hub, riderHub *ws.RiderHub, driverSvc *service.DriverService, rideSvc *service.RideService) *WSHandler {
+func NewWSHandler(hub *ws.Hub, riderHub *ws.RiderHub, driverSvc *service.DriverService, rideSvc *service.RideService, poolSvc *service.PoolService, chatSvc *service.ChatService) *WSHandler {
 	return &WSHandler{
 		hub:       hub,
 		riderHub:  riderHub,
 		driverSvc: driverSvc,
 		rideSvc:   rideSvc,
+		poolSvc:   poolSvc,
+		chatSvc:   chatSvc,
 	}
 }
 
@@ -46,6 +51,8 @@ func (h *WSHandler) DriverConnect(c *gin.Context) {
 	}
 
 	driverID, _ := uuid.Parse(userID)
+
+	fmt.Printf("driver connected id is : %v", driverID)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -103,7 +110,6 @@ func (h *WSHandler) RiderConnect(c *gin.Context) {
 	h.riderReadPump(client, conn)
 }
 
-// riderWritePump sends messages from server > rider
 func (h *WSHandler) riderWritePump(client *ws.RiderClient, conn *websocket.Conn) {
 	ticker := time.NewTicker((90 * time.Second * 9) / 10)
 	defer func() {
@@ -130,7 +136,6 @@ func (h *WSHandler) riderWritePump(client *ws.RiderClient, conn *websocket.Conn)
 	}
 }
 
-// riderReadPump keeps the connection alive and detects disconnect
 func (h *WSHandler) riderReadPump(client *ws.RiderClient, conn *websocket.Conn) {
 	defer func() {
 		h.riderHub.Unregister <- client
@@ -144,11 +149,21 @@ func (h *WSHandler) riderReadPump(client *ws.RiderClient, conn *websocket.Conn) 
 		return nil
 	})
 
-	// Just drain — rider doesn't send meaningful messages
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, data, err := conn.ReadMessage()
+
+		if err != nil {
 			break
 		}
+
+		var msg ws.Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			log.Printf("invalid message from rider %s: %v", client.RiderID, err)
+			continue
+		}
+
+		h.handleRiderMessage(client.RiderID, msg)
+
 	}
 }
 
@@ -164,10 +179,49 @@ func (h *WSHandler) handleMessage(driverID uuid.UUID, msg ws.Message) {
 		h.handleStartTrip(driverID, msg.Payload)
 	case ws.MessageTypeEndTrip:
 		h.handleEndTrip(driverID, msg.Payload)
+	case ws.MessageTypePoolRideStarted:
+		h.handlePoolStartTrip(driverID, msg.Payload)
+	case ws.MessageTypePoolCancelled:
+		h.handlePoolCancelTrip(driverID, msg.Payload)
+	case ws.MessageTypePoolRideCompleted:
+		h.handlePoolCompleteTrip(driverID, msg.Payload)
+	case ws.MessageTypeChatMessage:
+		h.handleDriverChatMessage(driverID, msg.Payload)
+
 	case "ping":
-		
+
 	default:
 		log.Printf("unknown message type from driver %s: %s", driverID, msg.Type)
+	}
+}
+
+func (h *WSHandler) handleRiderMessage(riderID uuid.UUID, msg ws.Message) {
+	switch msg.Type {
+	case ws.MessageTypeRiderLocation:
+		h.handleRiderLocationUpdate(riderID, msg.Payload)
+	case ws.MessageTypeChatMessage:
+		h.handleRiderChatMessage(riderID, msg.Payload)
+	case "ping":
+
+	default:
+		log.Printf("unknown message type from driver %s: %s", riderID, msg.Type)
+	}
+}
+
+func (h *WSHandler) handleRiderLocationUpdate(riderID uuid.UUID, payload interface{}) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+
+	var loc ws.LocationPayload
+	if err := json.Unmarshal(data, &loc); err != nil {
+		return
+	}
+	ctx := context.Background()
+
+	if err := h.driverSvc.UpdateRiderLocation(ctx, riderID, loc.Latitude, loc.Longitude); err != nil {
+		log.Printf("failed to save location for rider %s: %v", riderID, err)
 	}
 }
 
@@ -189,7 +243,6 @@ func (h *WSHandler) handleLocationUpdate(driverID uuid.UUID, payload interface{}
 		log.Printf("failed to save location for driver %s: %v", driverID, err)
 	}
 
-	
 	h.rideSvc.PushLocationToRider(ctx, driverID, loc.Latitude, loc.Longitude)
 }
 
@@ -254,6 +307,28 @@ func (h *WSHandler) handleStartTrip(driverUserID uuid.UUID, payload interface{})
 
 }
 
+func (h *WSHandler) handlePoolStartTrip(driverUserID uuid.UUID, payload interface{}) {
+
+	raw, _ := json.Marshal(payload)
+
+	var input ws.PoolTripActionPayload
+
+	if err := json.Unmarshal(raw, &input); err != nil {
+		log.Panicf("invalid start_trip payload: %v", err)
+	}
+
+	poolID, err := uuid.Parse(input.PoolID)
+
+	if err != nil {
+		log.Printf("invalid pool_id: %v", err)
+		return
+	}
+
+	if err := h.poolSvc.StartPoolTrip(context.Background(), poolID, driverUserID); err != nil {
+		log.Printf("failed to start pool trip for driver %s: %v", driverUserID, err)
+	}
+}
+
 func (h *WSHandler) handleEndTrip(driverUserID uuid.UUID, payload interface{}) {
 	raw, _ := json.Marshal(payload)
 	var input ws.TripActionPayload
@@ -271,4 +346,115 @@ func (h *WSHandler) handleEndTrip(driverUserID uuid.UUID, payload interface{}) {
 	if err := h.rideSvc.EndTrip(context.Background(), driverUserID, rideID); err != nil {
 		log.Printf("end_trip error: %v", err)
 	}
+}
+
+func (h *WSHandler) handlePoolCompleteTrip(driverUserID uuid.UUID, payload interface{}) {
+
+	raw, _ := json.Marshal(payload)
+	var input ws.PoolTripActionPayload
+	if err := json.Unmarshal(raw, &input); err != nil {
+		log.Printf("invalid end_trip payload: %v", err)
+		return
+	}
+
+	poolID, err := uuid.Parse(input.PoolID)
+	if err != nil {
+		log.Printf("invalid ride_id: %v", err)
+		return
+	}
+
+	if err := h.poolSvc.CompleteTrip(context.Background(), poolID, driverUserID); err != nil {
+		log.Printf("end_trip error: %v", err)
+	}
+}
+
+func (h *WSHandler) handlePoolCancelTrip(driverUserID uuid.UUID, payload interface{}) {
+
+	raw, _ := json.Marshal(payload)
+	var input ws.PoolTripActionPayload
+	if err := json.Unmarshal(raw, &input); err != nil {
+		log.Printf("invalid end_trip payload: %v", err)
+		return
+	}
+
+	poolID, err := uuid.Parse(input.PoolID)
+	if err != nil {
+		log.Printf("invalid ride_id: %v", err)
+		return
+	}
+
+	if err := h.poolSvc.CancelPoolTrip(context.Background(), poolID, driverUserID); err != nil {
+		log.Printf("end_trip error: %v", err)
+	}
+}
+
+func (h *WSHandler) handleDriverChatMessage(driverUserID uuid.UUID, payload interface{}) {
+	raw, _ := json.Marshal(payload)
+	var input struct {
+		RideID  string `json:"ride_id"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		log.Printf("Chat invalid payload from driver %s: %v", driverUserID, err)
+		return
+	}
+	rideID, err := uuid.Parse(input.RideID)
+	if err != nil {
+		return
+	}
+	if err := h.chatSvc.SendMessage(context.Background(), service.SendMessageInput{
+		RideID:     rideID,
+		SenderID:   driverUserID,
+		SenderType: models.SenderTypeDriver,
+		Message:    input.Message,
+	}); err != nil {
+		log.Printf("Chat driver send error: %v", err)
+	}
+}
+
+func (h *WSHandler) handleRiderChatMessage(riderID uuid.UUID, payload interface{}) {
+	raw, _ := json.Marshal(payload)
+	var input struct {
+		RideID  string `json:"ride_id"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		log.Printf("[Chat] invalid payload from rider %s: %v", riderID, err)
+		return
+	}
+	rideID, err := uuid.Parse(input.RideID)
+	if err != nil {
+		return
+	}
+	if err := h.chatSvc.SendMessage(context.Background(), service.SendMessageInput{
+		RideID:     rideID,
+		SenderID:   riderID,
+		SenderType: models.SenderTypeRider,
+		Message:    input.Message,
+	}); err != nil {
+		log.Printf("[Chat] rider send error: %v", err)
+	}
+}
+
+func (h *WSHandler) GetChatHistory(c *gin.Context) {
+	userID, ok := middleware.GetUserId(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	requesterID, _ := uuid.Parse(userID)
+
+	rideID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid ride id"})
+		return
+	}
+
+	messages, err := h.chatSvc.GetHistory(c.Request.Context(), rideID, requesterID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }

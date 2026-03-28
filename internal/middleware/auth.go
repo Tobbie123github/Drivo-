@@ -96,9 +96,9 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 
 		claims, err := auth.VerifyToken(jwtSecret, tokenString)
 		if err != nil {
-			// ← Check if this is a WebSocket upgrade request
+		
 			if c.GetHeader("Upgrade") == "websocket" {
-				// Return 401 — browser WebSocket will close with code 1006
+				
 				c.AbortWithStatus(http.StatusUnauthorized)
 				return
 			}

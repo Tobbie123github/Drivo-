@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"drivo/internal/jobs"
 	"drivo/internal/service"
+	"drivo/internal/workers"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -94,9 +96,18 @@ func (h *AdminHandler) ApproveDriver(c *gin.Context) {
 		return
 	}
 
-	if err := h.adminSvc.ApproveDriver(c.Request.Context(), driverID); err != nil {
+	d, err := h.adminSvc.ApproveDriver(c.Request.Context(), driverID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	if d.User.Email != nil {
+		workers.EmailQueue <- jobs.EmailJob{
+			Type: jobs.EmailTypeDriverApproved,
+			To:   *d.User.Email,
+			Name: d.User.Name,
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Driver approved"})

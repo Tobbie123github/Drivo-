@@ -7,6 +7,10 @@ import (
 	"drivo/internal/server"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
 )
 
 func main() {
@@ -25,13 +29,34 @@ func main() {
 
 	fmt.Println(a)
 
-	router := server.NewRouter(a, cfg)
-	
+	router, scheduler := server.NewRouter(a, cfg)
 
-	add := fmt.Sprintf(":%s", cfg.PORT)
+	addr := fmt.Sprintf(":%s", cfg.PORT)
 
-	if err := router.Run(add); err != nil {
-		log.Fatalf("Server Error")
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: router,
+	}
+
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server Error: %v", err)
+		}
+	}()
+
+	fmt.Println("Server started on:", addr)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt)
+	<-quit
+	fmt.Println("Shutting down server...")
+
+	scheduler.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
 }

@@ -2,10 +2,8 @@ package service
 
 import (
 	"context"
-	"drivo/internal/jobs"
 	"drivo/internal/models"
 	"drivo/internal/repository"
-	"drivo/internal/workers"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -38,11 +36,11 @@ func (s *AdminService) GetAllDrivers(ctx context.Context, status string) ([]mode
 	return s.adminRepo.GetAllDrivers(ctx, status)
 }
 
-func (s *AdminService) ApproveDriver(ctx context.Context, driverID uuid.UUID) error {
+func (s *AdminService) ApproveDriver(ctx context.Context, driverID uuid.UUID) (models.Driver, error) {
 
 	drivers, err := s.adminRepo.GetAllDrivers(ctx, "")
 	if err != nil {
-		return err
+		return models.Driver{}, err
 	}
 
 	var driver models.Driver
@@ -54,36 +52,28 @@ func (s *AdminService) ApproveDriver(ctx context.Context, driverID uuid.UUID) er
 	}
 
 	if !driver.IsIdentityVerified {
-		return fmt.Errorf("cannot approve driver: identity not verified")
+		return models.Driver{}, fmt.Errorf("cannot approve driver: identity not verified")
 	}
 
 	if !driver.IsVehicleVerified {
-		return fmt.Errorf("cannot approve driver: vehicle not verified")
+		return models.Driver{}, fmt.Errorf("cannot approve driver: vehicle not verified")
 	}
 	if !driver.LicenseVerified {
-		return fmt.Errorf("cannot approve driver: license not verified")
+		return models.Driver{}, fmt.Errorf("cannot approve driver: license not verified")
 	}
 
 	if err := s.adminRepo.UpdateDriverStatus(ctx, driverID, models.DriverActive); err != nil {
-		return err
+		return models.Driver{}, err
 	}
 
 
 	d, err := s.driverRepo.GetUserByDriverID(driverID)
 
 	if err != nil {
-		return nil 
+		return models.Driver{}, nil 
 	}
 
-	// Send approval email
-	if driver.User.Email != nil {
-		workers.EmailQueue <- jobs.EmailJob{
-			Type: jobs.EmailTypeDriverApproved,
-			To:   *d.User.Email,
-			Name: d.User.Name,
-		}
-	}
-	return nil
+	return d,  nil
 }
 
 func (s *AdminService) RejectDriver(ctx context.Context, driverID uuid.UUID) error {

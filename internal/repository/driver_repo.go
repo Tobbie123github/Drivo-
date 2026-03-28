@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -301,4 +302,68 @@ func (r *DriverRepo) IncrementCancellationRate(ctx context.Context, driverID uui
 		Where("id = ?", driverID).
 		UpdateColumn("cancellation_rate", gorm.Expr("cancellation_rate + 1")).
 		Error
+}
+
+func (r *DriverRepo) SaveRiderLocationToRedis(ctx context.Context, riderID uuid.UUID, lat, lng float64) error {
+
+	data := models.LocationData{
+		Latitude:  lat,
+		Longitude: lng,
+		UpdatedAt: time.Now().UTC(),
+	}
+
+	bytes, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal location: %v", err)
+	}
+
+	key := fmt.Sprintf("rider:location:%s", riderID.String())
+
+	return r.db.Redis.Set(ctx, key, bytes, 5*time.Minute).Err()
+}
+
+// will fix, send broadcast pool to online riders and location must match
+func (r *DriverRepo) GetRiderLocationFromRedis(ctx context.Context, riderID uuid.UUID) (*models.LocationData, error) {
+	key := fmt.Sprintf("rider:location:%s", riderID.String())
+
+	val, err := r.db.Redis.Get(ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	var loc models.LocationData
+
+	if err := json.Unmarshal([]byte(val), &loc); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal location: %v", err)
+	}
+
+	return &loc, nil
+}
+
+func (r *DriverRepo) GetNearbyRiderIDs(ctx context.Context, lat, lng, radiusKm float64, onlineRiderIDs []uuid.UUID) ([]uuid.UUID, error) {
+	var nearby []uuid.UUID
+
+	for _, riderID := range onlineRiderIDs {
+		loc, err := r.GetRiderLocationFromRedis(ctx, riderID)
+		if err != nil {
+			continue
+		}
+
+		dist := haversineKmDriver(lat, lng, loc.Latitude, loc.Longitude)
+		if dist <= radiusKm {
+			nearby = append(nearby, riderID)
+		}
+	}
+
+	return nearby, nil
+}
+
+func haversineKmDriver(lat1, lng1, lat2, lng2 float64) float64 {
+	const R = 6371
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLng := (lng2 - lng1) * math.Pi / 180
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*math.Pi/180)*math.Cos(lat2*math.Pi/180)*
+			math.Sin(dLng/2)*math.Sin(dLng/2)
+	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }

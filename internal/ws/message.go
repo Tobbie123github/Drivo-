@@ -4,6 +4,7 @@ type MessageType string
 
 const (
 	MessageTypeLocation      MessageType = "location_update"
+	MessageTypeRiderLocation MessageType = "rider_location_update"
 	MessageTypeRideResponse  MessageType = "ride_response"
 	MessageTypeRideRequest   MessageType = "ride_request"
 	MessageTypeDriverArrived MessageType = "driver_arrived"
@@ -25,7 +26,19 @@ const (
 	MessageTypeRateDriver MessageType = "rate_driver"
 	MessageTypeRateRider  MessageType = "rate_rider"
 
+	MessageTypePoolRiderJoined   MessageType = "pool_rider_joined"
+	MessageTypePoolUpdated       MessageType = "pool_ride_updated"
+	MessageTypePoolCancelled     MessageType = "pool_ride_cancelled"
+	MessageTypePoolAvailable     MessageType = "pool_ride_available"
+	MessageTypePoolRideStarted   MessageType = "pool_ride_started"
+	MessageTypePoolRideCompleted MessageType = "pool_ride_completed"
+
 	MessageTypeDriverLocation MessageType = "driver_location"
+
+	MessageTypeChatMessage MessageType = "chat_message"
+	MessageTypeChatHistory MessageType = "chat_history"
+	MessageTypeChatClosed  MessageType = "chat_closed"
+	MessageTypeChatRead    MessageType = "chat_read"
 
 	MessageTypeError MessageType = "error"
 )
@@ -37,6 +50,9 @@ type Message struct {
 
 type TripActionPayload struct {
 	RideID string `json:"ride_id"`
+}
+type PoolTripActionPayload struct {
+	PoolID string `json:"pool_id"`
 }
 
 type RideCompletedPayload struct {

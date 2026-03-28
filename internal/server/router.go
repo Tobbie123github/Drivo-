@@ -4,6 +4,7 @@ import (
 	"drivo/internal/app"
 	"drivo/internal/config"
 	"drivo/internal/handler"
+	"drivo/internal/jobs"
 	"drivo/internal/middleware"
 	"drivo/internal/repository"
 	"drivo/internal/service"
@@ -14,7 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
+func NewRouter(a *app.App, cfg config.Config) (*gin.Engine, *jobs.Scheduler) {
 
 	r := gin.New()
 
@@ -51,11 +52,15 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 
 	driverRepo := repository.NewDriverRepo(a)
 	driverService := service.NewDriverService(driverRepo, cfg.JWTSecret)
-	driverHandler := handler.NewDriverHandler(driverService)
+
+	chatRepo := repository.NewChatRepo(a)
+	chatService := service.NewChatService(chatRepo, riderHub, hub)
 
 	rideRepo := repository.NewRideRepo(a)
-	rideService := service.NewRideService(rideRepo, driverRepo, hub, riderHub)
+	rideService := service.NewRideService(rideRepo, driverRepo, hub, riderHub, chatService)
 	rideHandler := handler.NewRideHandler(rideService)
+
+	driverHandler := handler.NewDriverHandler(driverService, rideService)
 
 	ratingRepo := repository.NewRatingRepo(a)
 	ratingService := service.NewRatingService(ratingRepo, rideRepo, driverRepo)
@@ -65,10 +70,25 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 	adminService := service.NewAdminService(adminRepo, driverRepo)
 	adminHandler := handler.NewAdminHandler(adminService)
 
+	poolRepo := repository.NewPoolRepo(a)
+	poolService := service.NewPoolService(poolRepo, rideRepo, riderHub, hub, rideService, driverRepo)
+	poolHandler := handler.NewPoolHandler(poolService, riderHub, driverRepo)
+
 	mailSvc := service.NewMailService(a)
 	workers.StartEmailWorkers(mailSvc)
 
-	wsHandler := handler.NewWSHandler(hub, riderHub, driverService, rideService)
+	recurringRepo := repository.NewRecurringRepo(a)
+	recurringRideJob := jobs.NewRecurringRideJob(recurringRepo, rideRepo)
+
+	scheduler := jobs.NewScheduler(func() {
+		rideService.RunScheduledRides()
+	}, recurringRideJob)
+
+	scheduler.Start()
+
+	recurringHandler := handler.NewRecurringHandler(recurringRepo)
+
+	wsHandler := handler.NewWSHandler(hub, riderHub, driverService, rideService, poolService, chatService)
 
 	// User Auth
 	r.POST("/auth/user/register", userHandler.PreRegisterUser)
@@ -80,11 +100,11 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 	r.POST("/auth/driver/verify", driverHandler.RegisterDriver)
 	r.POST("/auth/driver/login", driverHandler.LoginDriver)
 
+	// Authenticated routes
 	authenticated := r.Group("")
-
 	authenticated.Use(middleware.AuthRequired(cfg.JWTSecret))
+	authenticated.POST("/driver/location/update", middleware.RequireActiveDriver(a.DB), driverHandler.UpdateLocation)
 
-	
 	rideGroup := authenticated.Group("/ride")
 	{
 
@@ -92,11 +112,21 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 		rideGroup.POST("/cancel", rideHandler.CancelRide)
 		rideGroup.GET("/history", rideHandler.GetRiderHistory)
 
+		rideGroup.POST("/pool/check", poolHandler.CheckPool)
+		rideGroup.POST("/pool/join", poolHandler.JoinPool)
+
 		rideGroup.POST("/driver/cancel", middleware.RequireOnboardingComplete(a.DB), middleware.RequireActiveDriver(a.DB), rideHandler.DriverCancelRide)
 		rideGroup.GET("/driver/history", middleware.RequireOnboardingComplete(a.DB), middleware.RequireActiveDriver(a.DB), rideHandler.GetDriverHistory)
+
+		rideGroup.POST("/recurring", recurringHandler.Create)
+		rideGroup.GET("/recurring", recurringHandler.List)
+		rideGroup.DELETE("/recurring/:id", recurringHandler.Delete)
+
+		rideGroup.GET("/:id/chat", wsHandler.GetChatHistory)
 	}
 
-	authenticated.GET("/ws/driver",middleware.RequireOnboardingComplete(a.DB), middleware.RequireActiveDriver(a.DB), wsHandler.DriverConnect)
+	// WebSocket routes
+	authenticated.GET("/ws/driver", middleware.RequireOnboardingComplete(a.DB), middleware.RequireActiveDriver(a.DB), wsHandler.DriverConnect)
 	authenticated.GET("/ws/rider", wsHandler.RiderConnect)
 
 	authenticated.POST("/rating/driver", ratingHandler.RateDriver)
@@ -110,15 +140,17 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 		driver.POST("/documents", driverHandler.DriverProofUpload)
 		driver.POST("/onboarding/complete", driverHandler.AgreeTerms)
 		driver.GET("/profile", driverHandler.GetDriver)
+		driver.POST("/pool/create", middleware.RequireActiveDriver(a.DB), poolHandler.DriverCreatePool)
 	}
 
+	// Admin routes
 	admin := authenticated.Group("/admin")
 	admin.Use(middleware.RequireAdmin())
 	{
 
 		admin.GET("/stats", adminHandler.GetDashboardStats)
 
-		admin.GET("/drivers", adminHandler.GetAllDrivers) // ?status=pending
+		admin.GET("/drivers", adminHandler.GetAllDrivers)
 		admin.PUT("/drivers/:id/approve", adminHandler.ApproveDriver)
 		admin.PUT("/drivers/:id/reject", adminHandler.RejectDriver)
 		admin.PUT("/drivers/:id/suspend", adminHandler.SuspendDriver)
@@ -130,8 +162,8 @@ func NewRouter(a *app.App, cfg config.Config) *gin.Engine {
 
 		admin.GET("/riders", adminHandler.GetAllRiders)
 
-		admin.GET("/rides", adminHandler.GetAllRides) // ?status=completed
+		admin.GET("/rides", adminHandler.GetAllRides)
 	}
 
-	return r
+	return r, scheduler
 }

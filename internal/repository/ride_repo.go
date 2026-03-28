@@ -182,3 +182,34 @@ func (r *RideRepo) DriverHistory(ctx context.Context, driverID uuid.UUID) ([]mod
 
 	return rides, nil
 }
+
+func (r *RideRepo) UpdatePoolRidesFare(ctx context.Context, poolID uuid.UUID, newFarePerHead float64) error {
+	return r.db.DB.WithContext(ctx).Model(&models.PoolGroup{}).Where("id = ?", poolID).Update("fare_per_head", newFarePerHead).Error
+}
+
+func (r *RideRepo) GetRidesByPoolID(ctx context.Context, poolID uuid.UUID) ([]models.Ride, error) {
+	var pool models.PoolGroup
+
+	err := r.db.DB.WithContext(ctx).
+		Where("id = ?", poolID).
+		Preload("Rides").
+		First(&pool).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pool.Rides, nil
+}
+
+func (r *RideRepo) GetDueScheduledRides(ctx context.Context) ([]models.Ride, error) {
+	var rides []models.Ride
+	now := time.Now().UTC()
+
+	err := r.db.DB.WithContext(ctx).
+		Where("status = ?", models.RideStatusScheduled).
+		Where("scheduled_at <= ?", now).
+		Find(&rides).Error
+
+	return rides, err
+}

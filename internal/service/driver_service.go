@@ -4,10 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"drivo/internal/auth"
-	"drivo/internal/jobs"
 	"drivo/internal/models"
 	"drivo/internal/repository"
-	"drivo/internal/workers"
 	"drivo/pkg/utils"
 	"errors"
 	"fmt"
@@ -46,7 +44,7 @@ func generateToken(length int) (string, error) {
 	return fmt.Sprintf("%0*d", length, n), nil
 }
 
-func (svc *DriverService) PreRegister(ctx context.Context, input models.DriverRegisterInput) error {
+func (svc *DriverService) PreRegister(ctx context.Context, input models.DriverRegisterInput) (string, string, string, error) {
 
 	// validate inputs
 	email := strings.TrimSpace(strings.ToLower(input.Email))
@@ -55,38 +53,38 @@ func (svc *DriverService) PreRegister(ctx context.Context, input models.DriverRe
 	name := strings.TrimSpace(input.Name)
 
 	if email == "" || password == "" || name == "" || phone == "" {
-		return errors.New("Name, Email, Phone and password must not be empty")
+		return "", "", "", errors.New("Name, Email, Phone and password must not be empty")
 	}
 
 	if len(password) < 6 {
-		return errors.New("Password must be of lenght 6")
+		return "", "", "", errors.New("Password must be of lenght 6")
 	}
 
 	// check if user already exists
 	if err := svc.repo.FindEmail(email); err != nil {
-		return err
+		return "", "", "", err
 	}
 
 	// check if user already exists with phone
 	if err := svc.repo.FindPhone(phone); err != nil {
-		return err
+		return "", "", "", err
 	}
 
 	ok, err := svc.repo.ExistInRedis(email)
 
 	if err != nil {
-		return fmt.Errorf("Error with exist in redis :%v", err)
+		return "", "", "", fmt.Errorf("Error with exist in redis :%v", err)
 	}
 
 	if ok == false {
-		return errors.New("Email already exist, Verification already sent")
+		return "", "", "", errors.New("Email already exist, Verification already sent")
 	}
 
 	// hash password
 	hashPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
 	if err != nil {
-		return fmt.Errorf("Unable to Hash paswword:%v", err)
+		return "", "", "", fmt.Errorf("Unable to Hash paswword:%v", err)
 	}
 
 	otp, _ := generateToken(5)
@@ -102,17 +100,12 @@ func (svc *DriverService) PreRegister(ctx context.Context, input models.DriverRe
 	}
 
 	if err := svc.repo.StageDriver(ctx, email, otp, u); err != nil {
-		return errors.New("Error staging user")
+		return "", "", "", errors.New("Error staging user")
 	}
 
-	workers.EmailQueue <- jobs.EmailJob{
-		Type: jobs.EmailTypeOTP,
-		To:   email,
-		Name: name,
-		OTP:  otp,
-	}
+	
 
-	return nil
+	return email, name, otp, nil
 
 }
 
@@ -174,12 +167,6 @@ func (svc *DriverService) VerifyUserEmail(ctx context.Context, inputOTP string, 
 	// Delete the staged driver from Redis
 	if err := svc.repo.DeleteStagedDriver(ctx, inputEmail); err != nil {
 		return models.User{}, fmt.Errorf("Error deleting staged driver: %v", err)
-	}
-
-	workers.EmailQueue <- jobs.EmailJob{
-		Type: jobs.EmailTypeDriverWelcome,
-		To:   user.Email,
-		Name: user.Name,
 	}
 
 	return u, nil
@@ -551,6 +538,17 @@ func (svc *DriverService) UpdateLocation(ctx context.Context, driverID uuid.UUID
 	}
 
 	if err := svc.repo.SaveLocationToRedis(ctx, driverID, lat, lng); err != nil {
+		return fmt.Errorf("failed to cache location: %v", err)
+	}
+
+	return nil
+}
+func (svc *DriverService) UpdateRiderLocation(ctx context.Context, driverID uuid.UUID, lat float64, lng float64) error {
+	if lat < -90 || lat > 90 || lng < -180 || lng > 180 {
+		return errors.New("invalid coordinates")
+	}
+
+	if err := svc.repo.SaveRiderLocationToRedis(ctx, driverID, lat, lng); err != nil {
 		return fmt.Errorf("failed to cache location: %v", err)
 	}
 
