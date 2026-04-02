@@ -55,8 +55,20 @@ func NewApp(ctx context.Context) (*App, error) {
 func runMigrations(db *gorm.DB) error {
 
 	enums := []string{
-		`CREATE TYPE user_role AS ENUM ('user', 'driver', 'admin')`,
-		`CREATE TYPE driver_status AS ENUM ('pending','offline','active','suspended','banned')`,
+		`DO $$ BEGIN
+		CREATE TYPE user_role AS ENUM ('user', 'driver', 'admin');
+	EXCEPTION WHEN duplicate_object THEN null;
+	END $$;`,
+
+		`DO $$ BEGIN
+		CREATE TYPE driver_status AS ENUM ('pending','offline','active','suspended','banned');
+	EXCEPTION WHEN duplicate_object THEN null;
+	END $$;`,
+
+		`DO $$ BEGIN
+		CREATE TYPE pool_status AS ENUM ('open','full','closed');
+	EXCEPTION WHEN duplicate_object THEN null;
+	END $$;`,
 	}
 	for _, sql := range enums {
 		if err := db.Exec(sql).Error; err != nil {
