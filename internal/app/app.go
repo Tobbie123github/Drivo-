@@ -66,7 +66,7 @@ func runMigrations(db *gorm.DB) error {
 	END $$;`,
 
 		`DO $$ BEGIN
-		CREATE TYPE pool_status AS ENUM ('open','full','closed');
+		CREATE TYPE pool_status AS ENUM ('open','full','active', 'completed', 'cancelled');
 	EXCEPTION WHEN duplicate_object THEN null;
 	END $$;`,
 	}
