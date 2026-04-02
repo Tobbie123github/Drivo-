@@ -22,6 +22,7 @@ type Config struct {
 	MailjetSecretKey string
 	MailjetFromEmail string
 	MailjetFromName  string
+	FirebaseCredentialsPath string `env:"FIREBASE_CREDENTIALS_PATH"`
 }
 
 func Load() (Config, error) {

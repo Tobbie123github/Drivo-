@@ -367,3 +367,10 @@ func haversineKmDriver(lat1, lng1, lat2, lng2 float64) float64 {
 			math.Sin(dLng/2)*math.Sin(dLng/2)
 	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
+
+
+func (r *DriverRepo) UpdatePassword(userID uuid.UUID, newPassword string) error {
+
+	return r.db.DB.Model(&models.User{}).Where("id = ?", userID).Update("password_hash", newPassword).Error
+
+}

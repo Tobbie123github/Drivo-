@@ -55,6 +55,8 @@ func dispatch(mailer jobs.Mailer, job jobs.EmailJob) error {
 		return mailer.SendRideCompletedEmail(job.To, job.RideCompletedData)
 	case jobs.EmailTypeDriverApproved:
 		return mailer.SendDriverApprovedEmail(job.To, job.Name)
+	case jobs.EmailTypePasswordReset:
+		return mailer.SendPasswordResetEmail(job.To, job.ResetLink)
 	default:
 		log.Printf("unknown email type: %s\n", job.Type)
 		return nil

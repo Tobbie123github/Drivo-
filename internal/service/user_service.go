@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -190,4 +191,74 @@ func (svc *UserService) Login(inputPassword string, inputEmail string) (models.A
 		User:  u,
 		Token: token,
 	}, nil
+}
+
+func (svc *UserService) RequestResetPassword(email string) (token string, err error) {
+
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return "", errors.New("Email is required")
+	}
+
+	u, err := svc.repo.FindUserEmail(email)
+	if err != nil {
+		return "", errors.New("User with this email does not exist")
+	}
+
+	if u.Role != "user" {
+		return "", errors.New("Not a user")
+	}
+
+	token, err = auth.GenerateResetOTPToken(svc.jwtSecret, u.ID.String())
+	if err != nil {
+		return "", errors.New("Error generating reset token")
+	}
+
+	return token, nil
+}
+
+func (svc *UserService) ResetPassword(token string, newPassword string) error {
+
+	token = strings.TrimSpace(token)
+	newPassword = strings.TrimSpace(newPassword)
+
+	if token == "" || newPassword == "" {
+		return errors.New("All fields are required")
+	}
+
+	claims, err := auth.VerifyResetOTPToken(svc.jwtSecret, token)
+
+	if err != nil {
+		return errors.New("Invalid or expired reset token")
+	}
+
+	userID := claims.Subject
+
+	// hash new pass
+
+	hashPass, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+
+	if err != nil {
+		return fmt.Errorf("Unable to Hash paswword:%v", err)
+	}
+
+	// convert string to uuid
+
+	userId, _ := uuid.Parse(userID)
+
+	// convert byte to string
+	hashPassString := string(hashPass)
+
+	if err := svc.repo.UpdatePassword(userId, hashPassString); err != nil {
+		return fmt.Errorf("Error resetting password: %v", err)
+	}
+
+	return nil
+}
+
+func (svc *UserService) UpdateFCMToken(userID uuid.UUID, token string) error {
+	if token == "" {
+		return errors.New("FCM token cannot be empty")
+	}
+	return svc.repo.UpdateFCMToken(userID, token)
 }

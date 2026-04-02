@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 )
 
 type UserRepo struct {
@@ -136,4 +137,25 @@ func (r *UserRepo) FindUserEmail(email string) (models.User, error) {
 	return user, nil
 }
 
+func (r *UserRepo) UpdatePassword(userID uuid.UUID, newPassword string) error {
 
+	return r.db.DB.Model(&models.User{}).Where("id = ?", userID).Update("password_hash", newPassword).Error
+
+}
+
+func (r *UserRepo) UpdateFCMToken(userID uuid.UUID, token string) error {
+	return r.db.DB.Model(&models.User{}).
+		Where("id = ?", userID).
+		Update("fcm_token", token).Error
+}
+
+func (r *UserRepo) GetFCMToken(userID uuid.UUID) (string, error) {
+	var user models.User
+	if err := r.db.DB.Select("fcm_token").Where("id = ?", userID).First(&user).Error; err != nil {
+		return "", err
+	}
+	if user.FCMToken == nil {
+		return "", nil
+	}
+	return *user.FCMToken, nil
+}

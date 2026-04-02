@@ -34,6 +34,7 @@ type OTPEmailData struct {
 	OTP       string
 	ExpiresIn string
 	Year      int
+	ResetLink string
 }
 
 type WelcomeEmailData struct {
@@ -105,6 +106,23 @@ func (s *MailService) SendRideCompletedEmail(to string, data jobs.RideCompletedD
 	}
 
 	return s.send(to, "Your Drivo Ride Receipt", html)
+}
+
+func (s *MailService) SendPasswordResetEmail(to string, otp string) error {
+
+	data := OTPEmailData{
+		ResetLink: otp,
+		ExpiresIn: "15 minutes",
+		Year:      time.Now().Year(),
+	}
+
+	html, err := renderTemplate(passwordResetTemplate, data)
+	if err != nil {
+		return fmt.Errorf("failed to render password reset template: %v", err)
+	}
+
+	return s.send(to, "Drivo Password Reset Request", html)
+
 }
 
 func (s *MailService) SendDriverApprovedEmail(to string, name string) error {
@@ -269,11 +287,11 @@ const driverApprovedTemplate = `
     </div>
 
     <div class="tip">
-      <p>⭐ Drivers with a rating above <strong>4.8</strong> get priority in ride matching. Be punctual, polite, and keep your vehicle clean.</p>
+      <p> Drivers with a rating above <strong>4.8</strong> get priority in ride matching. Be punctual, polite, and keep your vehicle clean.</p>
     </div>
 
     <div class="tip">
-      <p>📍 Always make sure your location is enabled so riders can find you accurately.</p>
+      <p> Always make sure your location is enabled so riders can find you accurately.</p>
     </div>
 
     <hr class="divider">
@@ -528,25 +546,11 @@ const driverWelcomeTemplate = `
   .header { background: #000; padding: 32px 40px; text-align: center; }
   .header h1 { color: #fff; font-size: 28px; font-weight: 700; }
   .header span { color: #facc15; }
-  .banner { background: #facc15; padding: 20px 40px; text-align: center; }
-  .banner p { font-size: 15px; font-weight: 600; color: #000; }
-  .body { padding: 40px; }
+  .body { padding: 40px; text-align: center; }
   .footer { background: #f9fafb; padding: 24px 40px; text-align: center; border-top: 1px solid #e5e7eb; }
   .footer p { color: #9ca3af; font-size: 13px; line-height: 1.6; }
-  h2 { font-size: 22px; font-weight: 600; margin-bottom: 12px; color: #111827; }
+  h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; color: #111827; }
   p { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 16px; }
-  .steps { margin: 24px 0; }
-  .step { display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
-  .step-number { background: #000; color: #facc15; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; text-align: center; line-height: 32px; }
-  .step-content h3 { font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 4px; }
-  .step-content p { font-size: 14px; color: #6b7280; margin: 0; }
-  .highlight { background: #f9fafb; border-left: 4px solid #facc15; padding: 16px 20px; border-radius: 0 8px 8px 0; margin: 24px 0; }
-  .highlight p { margin: 0; font-size: 14px; color: #374151; }
-  .divider { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
-  .stats { display: flex; gap: 16px; margin: 24px 0; }
-  .stat { flex: 1; background: #f9fafb; border-radius: 10px; padding: 16px; text-align: center; }
-  .stat-value { font-size: 22px; font-weight: 700; color: #000; }
-  .stat-label { font-size: 12px; color: #6b7280; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -556,83 +560,142 @@ const driverWelcomeTemplate = `
     <h1>Driv<span>o</span></h1>
   </div>
 
-  <div class="banner">
-    <p>🎉 You're officially a Drivo Driver</p>
-  </div>
-
   <div class="body">
-    <h2>Welcome aboard, {{.Name}}!</h2>
-    <p>Your application has been verified and your driver account is now active. You're ready to start earning with Drivo.</p>
+    <h2>Welcome, {{.Name}} 👋</h2>
+    <p>We're glad to have you on board.</p>
+    <p>You're now part of the Drivo community. Your account is still pending review. </p>
+    <p>If you ever need help, feel free to reach out — we're here for you.</p>
 
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-value">₦0</div>
-        <div class="stat-label">Earnings so far</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value">5.0 ⭐</div>
-        <div class="stat-label">Starting rating</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value">0</div>
-        <div class="stat-label">Trips completed</div>
-      </div>
-    </div>
-
-    <hr class="divider">
-
-    <p><strong>Here's how to get started:</strong></p>
-
-    <div class="steps">
-      <div class="step">
-        <div class="step-number">1</div>
-        <div class="step-content">
-          <h3>Open the Drivo Driver App</h3>
-          <p>Log in with your registered email and password.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-number">2</div>
-        <div class="step-content">
-          <h3>Go Online</h3>
-          <p>Tap the "Go Online" button to start receiving ride requests in your area.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-number">3</div>
-        <div class="step-content">
-          <h3>Accept Ride Requests</h3>
-          <p>You have 15 seconds to accept each request. Keep your acceptance rate high for better opportunities.</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="step-number">4</div>
-        <div class="step-content">
-          <h3>Complete Trips &amp; Earn</h3>
-          <p>Pick up riders, complete trips, and watch your earnings grow.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="highlight">
-      <p>💡 <strong>Pro tip:</strong> Drivers with a rating above 4.8 get priority placement in ride requests. Always be on time, keep your vehicle clean, and be courteous to riders.</p>
-    </div>
-
-    <hr class="divider">
-
-    <p>If you have any questions or need support, reach out to us anytime. We're excited to have you on the Drivo team.</p>
-    <p>Drive safe,<br><strong>The Drivo Team</strong></p>
+    <p style="margin-top: 24px;">
+      Cheers,<br>
+      <strong>The Drivo Team</strong>
+    </p>
   </div>
 
   <div class="footer">
     <p>© {{.Year}} Drivo. All rights reserved.<br>
-    You received this email because you registered as a driver on Drivo.</p>
+    You received this email because you signed up on Drivo.</p>
   </div>
 
-</div>
-</body>
-</html>
-`
+// const driverWelcomeTemplate = `
+
+// <!DOCTYPE html>
+// <html>
+// <head>
+// <meta charset="UTF-8">
+// <meta name="viewport" content="width=device-width, initial-scale=1.0">
+// <style>
+//   * { margin: 0; padding: 0; box-sizing: border-box; }
+//   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f4f5; }
+//   .wrapper { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+//   .header { background: #000; padding: 32px 40px; text-align: center; }
+//   .header h1 { color: #fff; font-size: 28px; font-weight: 700; }
+//   .header span { color: #facc15; }
+//   .banner { background: #facc15; padding: 20px 40px; text-align: center; }
+//   .banner p { font-size: 15px; font-weight: 600; color: #000; }
+//   .body { padding: 40px; }
+//   .footer { background: #f9fafb; padding: 24px 40px; text-align: center; border-top: 1px solid #e5e7eb; }
+//   .footer p { color: #9ca3af; font-size: 13px; line-height: 1.6; }
+//   h2 { font-size: 22px; font-weight: 600; margin-bottom: 12px; color: #111827; }
+//   p { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 16px; }
+//   .steps { margin: 24px 0; }
+//   .step { display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
+//   .step-number { background: #000; color: #facc15; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; text-align: center; line-height: 32px; }
+//   .step-content h3 { font-size: 15px; font-weight: 600; color: #111827; margin-bottom: 4px; }
+//   .step-content p { font-size: 14px; color: #6b7280; margin: 0; }
+//   .highlight { background: #f9fafb; border-left: 4px solid #facc15; padding: 16px 20px; border-radius: 0 8px 8px 0; margin: 24px 0; }
+//   .highlight p { margin: 0; font-size: 14px; color: #374151; }
+//   .divider { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
+//   .stats { display: flex; gap: 16px; margin: 24px 0; }
+//   .stat { flex: 1; background: #f9fafb; border-radius: 10px; padding: 16px; text-align: center; }
+//   .stat-value { font-size: 22px; font-weight: 700; color: #000; }
+//   .stat-label { font-size: 12px; color: #6b7280; margin-top: 4px; }
+// </style>
+// </head>
+// <body>
+// <div class="wrapper">
+
+//   <div class="header">
+//     <h1>Driv<span>o</span></h1>
+//   </div>
+
+//   <div class="banner">
+//     <p>🎉 You're officially a Drivo Driver</p>
+//   </div>
+
+//   <div class="body">
+//     <h2>Welcome aboard, {{.Name}}!</h2>
+//     <p>Your application has been re]] and your driver account is now active. You're ready to start earning with Drivo.</p>
+
+//     <div class="stats">
+//       <div class="stat">
+//         <div class="stat-value">₦0</div>
+//         <div class="stat-label">Earnings so far</div>
+//       </div>
+//       <div class="stat">
+//         <div class="stat-value">5.0 ⭐</div>
+//         <div class="stat-label">Starting rating</div>
+//       </div>
+//       <div class="stat">
+//         <div class="stat-value">0</div>
+//         <div class="stat-label">Trips completed</div>
+//       </div>
+//     </div>
+
+//     <hr class="divider">
+
+//     <p><strong>Here's how to get started:</strong></p>
+
+//     <div class="steps">
+//       <div class="step">
+//         <div class="step-number">1</div>
+//         <div class="step-content">
+//           <h3>Open the Drivo Driver App</h3>
+//           <p>Log in with your registered email and password.</p>
+//         </div>
+//       </div>
+//       <div class="step">
+//         <div class="step-number">2</div>
+//         <div class="step-content">
+//           <h3>Go Online</h3>
+//           <p>Tap the "Go Online" button to start receiving ride requests in your area.</p>
+//         </div>
+//       </div>
+//       <div class="step">
+//         <div class="step-number">3</div>
+//         <div class="step-content">
+//           <h3>Accept Ride Requests</h3>
+//           <p>You have 15 seconds to accept each request. Keep your acceptance rate high for better opportunities.</p>
+//         </div>
+//       </div>
+//       <div class="step">
+//         <div class="step-number">4</div>
+//         <div class="step-content">
+//           <h3>Complete Trips &amp; Earn</h3>
+//           <p>Pick up riders, complete trips, and watch your earnings grow.</p>
+//         </div>
+//       </div>
+//     </div>
+
+//     <div class="highlight">
+//       <p><strong>Pro tip:</strong> Drivers with a rating above 4.8 get priority placement in ride requests. Always be on time, keep your vehicle clean, and be courteous to riders.</p>
+//     </div>
+
+//     <hr class="divider">
+
+//     <p>If you have any questions or need support, reach out to us anytime. We're excited to have you on the Drivo team.</p>
+//     <p>Drive safe,<br><strong>The Drivo Team</strong></p>
+//   </div>
+
+//   <div class="footer">
+//     <p>© {{.Year}} Drivo. All rights reserved.<br>
+//     You received this email because you registered as a driver on Drivo.</p>
+//   </div>
+
+// </div>
+// </body>
+// </html>
+// `
 
 const rideCompletedTemplate = `
 <!DOCTYPE html>
@@ -690,6 +753,49 @@ const rideCompletedTemplate = `
     </div>
 
     <p>We hope you had a great ride. See you next time!</p>
+  </div>
+  <div class="footer">
+    <p>© {{.Year}} Drivo. All rights reserved.</p>
+  </div>
+</div>
+</body>
+</html>
+`
+
+const passwordResetTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f4f5; }
+  .wrapper { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .header { background: #000; padding: 32px 40px; text-align: center; }
+  .header h1 { color: #fff; font-size: 28px; font-weight: 700; }
+  .header span { color: #facc15; }
+  .body { padding: 40px; }
+  .footer { background: #f9fafb; padding: 24px 40px; text-align: center; border-top: 1px solid #e5e7eb; }
+  .footer p { color: #9ca3af; font-size: 13px; line-height: 1.6; }
+  h2 { font-size: 22px; font-weight: 600; margin-bottom: 12px; color: #111827; }
+  p { font-size: 15px; line-height: 1.7; color: #374151; margin-bottom: 16px; }
+  .cta { display: inline-block; background: #000; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px; margin-top: 24px; }
+</style>
+
+</head>
+<body>
+<div class="wrapper"> 
+  <div class="header">
+    <h1>Driv<span>o</span></h1>
+  </div>
+  <div class="body">
+    <h2>Password Reset Request</h2>
+    <p>Hi</p>
+    <p>We received a request to reset your Drivo account password. Click the button below to set a new password:</p>
+    <a href="{{.ResetLink}}" class="cta">Reset Password</a>
+    <p>If you did not request a password reset, please ignore this email. Your account is still secure.</p>
+    <p>Best regards,<br><strong>The Drivo Team</strong></p>
   </div>
   <div class="footer">
     <p>© {{.Year}} Drivo. All rights reserved.</p>

@@ -94,15 +94,21 @@ func NewRouter(a *app.App, cfg config.Config) (*gin.Engine, *jobs.Scheduler) {
 	r.POST("/auth/user/register", userHandler.PreRegisterUser)
 	r.POST("/auth/user/verify", userHandler.RegisterUser)
 	r.POST("/auth/user/login", userHandler.LoginUser)
+	r.POST("/auth/user/password-reset", userHandler.RequestPasswordReset)
+	r.POST("/auth/user/password-reset/confirm", userHandler.PasswordReset)
 
 	// Driver Auth
 	r.POST("/auth/driver/register", driverHandler.PreRegisterDriver)
 	r.POST("/auth/driver/verify", driverHandler.RegisterDriver)
 	r.POST("/auth/driver/login", driverHandler.LoginDriver)
+	r.POST("/auth/driver/password-reset", driverHandler.RequestPasswordReset)
+	r.POST("/auth/driver/password-reset/confirm", driverHandler.PasswordReset)
 
 	// Authenticated routes
 	authenticated := r.Group("")
 	authenticated.Use(middleware.AuthRequired(cfg.JWTSecret))
+
+	authenticated.PUT("/user/fcm-token", userHandler.UpdateFCMToken)
 	authenticated.POST("/driver/location/update", middleware.RequireActiveDriver(a.DB), driverHandler.UpdateLocation)
 
 	rideGroup := authenticated.Group("/ride")

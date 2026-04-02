@@ -7,6 +7,7 @@ import (
 	"drivo/internal/models"
 	"drivo/internal/service"
 	"drivo/internal/workers"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -347,4 +348,63 @@ func (h *DriverHandler) UpdateLocation(c *gin.Context) {
 	h.rideSvc.PushLocationToRider(ctx, driverUserID, req.Latitude, req.Longitude)
 
 	c.JSON(http.StatusOK, gin.H{"message": "location updated"})
+}
+
+func (h *DriverHandler) RequestPasswordReset(c *gin.Context) {
+
+	var input models.UserPasswordResetRequest
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	token, err := h.svc.RequestResetPassword(input.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	resetLink := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", token)
+
+	// send email to user with otp
+	workers.EmailQueue <- jobs.EmailJob{
+		Type:      jobs.EmailTypePasswordReset,
+		To:        input.Email,
+		ResetLink: resetLink,
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Password reset OTP sent",
+		"token":   token,
+		"email":   input.Email,
+	})
+
+}
+
+func (h *DriverHandler) PasswordReset(c *gin.Context) {
+
+	var input models.PasswordResetRequest
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+		})
+		return
+	}
+
+	if err := h.svc.ResetPassword(input.Token, input.NewPassword); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Password Reset Successfully",
+	})
 }

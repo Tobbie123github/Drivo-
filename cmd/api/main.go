@@ -5,6 +5,7 @@ import (
 	"drivo/internal/app"
 	"drivo/internal/config"
 	"drivo/internal/server"
+	"drivo/pkg/fcm"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,6 +20,12 @@ func main() {
 
 	if err != nil {
 		log.Fatalf("Error occured loading config: %v", err)
+	}
+
+	if cfg.FirebaseCredentialsPath != "" {
+		if err := fcm.Init(cfg.FirebaseCredentialsPath); err != nil {
+			log.Printf("FCM init failed: %v", err)
+		}
 	}
 
 	a, err := app.NewApp(context.Background())

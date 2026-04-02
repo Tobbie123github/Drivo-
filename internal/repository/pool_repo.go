@@ -24,7 +24,7 @@ func (r *PoolRepo) CreatePool(ctx context.Context, pool *models.PoolGroup) error
 
 func (r *PoolRepo) GetOpenPools(ctx context.Context) ([]models.PoolGroup, error) {
 	var pools []models.PoolGroup
-	err := r.db.DB.WithContext(ctx).Where("status = ?", models.PoolStatusOpen).Where("current_size < max_riders").Preload("Rides").First(&pools).Error
+	err := r.db.DB.WithContext(ctx).Where("status = ?", models.PoolStatusOpen).Where("current_size < max_riders").Preload("Rides").Find(&pools).Error
 	if err != nil {
 		return nil, err
 	}

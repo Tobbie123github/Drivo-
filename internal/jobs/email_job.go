@@ -9,6 +9,7 @@ const (
 	EmailTypeRideConfirmation EmailType = "ride_confirmation"
 	EmailTypeRideCompleted    EmailType = "ride_completed"
 	EmailTypeDriverApproved   EmailType = "driver_approved"
+	EmailTypePasswordReset	EmailType = "password_reset"
 )
 
 type EmailJob struct {
@@ -18,6 +19,7 @@ type EmailJob struct {
 	OTP                  string
 	RideConfirmationData RideConfirmationData
 	RideCompletedData    RideCompletedData
+	ResetLink string
 }
 
 type RideConfirmationData struct {
@@ -50,4 +52,5 @@ type Mailer interface {
 	SendRideConfirmationEmail(to string, data RideConfirmationData) error
 	SendRideCompletedEmail(to string, data RideCompletedData) error
 	SendDriverApprovedEmail(to string, text string) error
+	SendPasswordResetEmail(to string, otp string) error
 }

@@ -28,6 +28,9 @@ type User struct {
 	Role         UserRole `gorm:"type:user_role;not null"`
 	IsVerified   bool     `gorm:"not null;default:false"`
 	IsActive     bool     `gorm:"not null;default:true"`
+
+	FCMToken *string `gorm:"type:varchar(500)" json:"-"`
+
 	// ReferralCode string     `gorm:"uniqueIndex;not null"`
 	// ReferredByID *uuid.UUID `gorm:"index"`
 	CreatedAt time.Time
@@ -62,4 +65,13 @@ type UserVerifyEmail struct {
 type UserLoginInput struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type UserPasswordResetRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type PasswordResetRequest struct {
+	Token       string `json:"token" required:"true"`
+	NewPassword string `json:"new_password" required:"true"`
 }
