@@ -119,7 +119,7 @@ func (h *UserHandler) RequestPasswordReset(c *gin.Context) {
 		return
 	}
 
-	resetLink := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", token)
+	resetLink := fmt.Sprintf("https://drivo-nine.vercel.app/reset-password?token=%s", token)
 
 	// send email to user with otp
 	workers.EmailQueue <- jobs.EmailJob{
