@@ -22,10 +22,8 @@ func main() {
 		log.Fatalf("Error occured loading config: %v", err)
 	}
 
-	if cfg.FirebaseCredentialsPath != "" {
-		if err := fcm.Init(cfg.FirebaseCredentialsPath); err != nil {
-			log.Printf("FCM init failed: %v", err)
-		}
+	if err := fcm.Init(os.Getenv("FIREBASE_CREDENTIALS_PATH")); err != nil {
+		log.Printf("FCM init failed: %v", err)
 	}
 
 	a, err := app.NewApp(context.Background())

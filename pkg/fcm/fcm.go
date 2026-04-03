@@ -11,8 +11,8 @@ import (
 
 var client *messaging.Client
 
-func Init(credentialsPath string) error {
-	opt := option.WithCredentialsFile(credentialsPath)
+func Init(credentialsJSON string) error {
+	opt := option.WithCredentialsJSON([]byte(credentialsJSON))
 	app, err := firebase.NewApp(context.Background(), nil, opt)
 	if err != nil {
 		return err
@@ -21,7 +21,7 @@ func Init(credentialsPath string) error {
 	if err != nil {
 		return err
 	}
-	log.Println(" FCM initialized")
+	log.Println("FCM initialized")
 	return nil
 }
 
