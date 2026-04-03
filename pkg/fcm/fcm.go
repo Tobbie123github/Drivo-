@@ -25,12 +25,13 @@ func Init(credentialsPath string) error {
 	return nil
 }
 
-func Send(ctx context.Context, token, title, body string, data map[string]string) {
-	if client == nil || token == "" {
+func Send(ctx context.Context, token *string, title, body string, data map[string]string) {
+	if client == nil || *token == "" {
+		log.Println("[FCM] Skipping send: client nil or token missing")
 		return
 	}
 	_, err := client.Send(ctx, &messaging.Message{
-		Token: token,
+		Token: *token,
 		Notification: &messaging.Notification{
 			Title: title,
 			Body:  body,

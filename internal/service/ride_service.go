@@ -545,7 +545,7 @@ func (s *RideService) acceptRide(ctx context.Context, ride models.Ride, driverID
 
 	sent := s.riderHub.SendToRider(ride.RiderID, bytes)
 
-	go fcm.Send(ctx, *ride.Rider.FCMToken, "Ride Accepted", fmt.Sprintf("Your ride has been accepted by %s. ETA: %d minutes", driver.User.Name, etaMinutes), map[string]string{
+	go fcm.Send(ctx, ride.Rider.FCMToken, "Ride Accepted", fmt.Sprintf("Your ride has been accepted by %s. ETA: %d minutes", driver.User.Name, etaMinutes), map[string]string{
 		"type": string(models.RideStatusAccepted),
 		"ride_id": ride.ID.String(),
 	})
@@ -620,7 +620,7 @@ func (s *RideService) DriverArrived(ctx context.Context, driverUserID uuid.UUID,
 	bytes, _ := json.Marshal(msg)
 	s.riderHub.SendToRider(ride.RiderID, bytes)
 
-	fcm.Send(ctx, *ride.Rider.FCMToken, "Your driver has arrived", "Your driver is waiting for you at the pickup location.", map[string]string{
+	fcm.Send(ctx, ride.Rider.FCMToken, "Your driver has arrived", "Your driver is waiting for you at the pickup location.", map[string]string{
 		"type": "driver_arrived",
 		"ride_id": ride.ID.String(),
 	})
@@ -672,7 +672,7 @@ func (s *RideService) StartTrip(ctx context.Context, driverUserID uuid.UUID, rid
 	s.riderHub.SendToRider(ride.RiderID, bytes)
 	fmt.Printf("Trip started for ride %s\n", rideID)
 
-	fcm.Send(ctx, *ride.Rider.FCMToken, "Your trip has started", "Have a safe trip!", map[string]string{
+	fcm.Send(ctx, ride.Rider.FCMToken, "Your trip has started", "Have a safe trip!", map[string]string{
 		"type": "trip_started",
 		"ride_id": ride.ID.String(),
 	})	
@@ -744,7 +744,7 @@ func (s *RideService) EndTrip(ctx context.Context, driverUserID uuid.UUID, rideI
 	completedBytes, _ := json.Marshal(completedMsg)
 	s.riderHub.SendToRider(ride.RiderID, completedBytes)
 
-	fcm.Send(ctx, *ride.Rider.FCMToken, "Your trip has completed", "Thank you for riding with us!", map[string]string{	
+	fcm.Send(ctx, ride.Rider.FCMToken, "Your trip has completed", "Thank you for riding with us!", map[string]string{	
 		"type": string(models.RideStatusCompleted),
 		"ride_id": ride.ID.String(),
 	})
