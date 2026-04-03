@@ -38,7 +38,7 @@ type Ride struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	Rider  User    `gorm:"foreignKey:RiderID" json:"-"`
+	Rider  User    `gorm:"foreignKey:RiderID"`
 	Driver *Driver `gorm:"foreignKey:DriverID" json:"-"`
 
 	RideMode     string     `gorm:"type:varchar(20);default:'solo'" json:"ride_mode"`
